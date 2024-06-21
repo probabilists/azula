@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "azula"
+description = "Diffusion models in PyTorch"
+authors = [
+  {name = "The Probabilists", email = "theprobabilists@gmail.com"}
+]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+]
+dynamic = ["dependencies", "version"]
+keywords = [
+  "torch",
+  "diffusion models",
+  "probability",
+  "distribution",
+  "generative",
+  "deep learning",
+]
+readme = "README.md"
+requires-python = ">=3.8"
+
+[project.urls]
+documentation = "https://azula.readthedocs.io"
+source = "https://github.com/probabilists/azula"
+tracker = "https://github.com/probabilists/azula/issues"
+
+[tool.setuptools.dynamic]
+dependencies = {file = "requirements.txt"}
+version = {attr = "azula.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["azula*"]
