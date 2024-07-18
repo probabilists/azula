@@ -5,6 +5,11 @@
 # macOS
 .DS_Store
 
+# Docs
+docs/api/
+docs/html/
+docs/jupyter_execute/
+
 
 ##########
 # Python #
