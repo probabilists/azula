@@ -28,10 +28,37 @@ keywords = [
 readme = "README.md"
 requires-python = ">=3.8"
 
+[project.optional-dependencies]
+dev = [
+  "pre-commit",
+  "ruff",
+]
+
 [project.urls]
 documentation = "https://azula.readthedocs.io"
 source = "https://github.com/probabilists/azula"
 tracker = "https://github.com/probabilists/azula/issues"
+
+[tool.ruff]
+extend-include = ["*.ipynb"]
+line-length = 99
+
+[tool.ruff.lint]
+extend-select = ["B", "I", "W"]
+ignore = ["E731"]
+preview = true
+
+[tool.ruff.lint.extend-per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+lines-between-types = 1
+no-sections = true
+relative-imports-order = "closest-to-furthest"
+
+[tool.ruff.format]
+preview = true
+quote-style = "preserve"
 
 [tool.setuptools.dynamic]
 dependencies = {file = "requirements.txt"}
