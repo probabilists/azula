@@ -23,6 +23,7 @@ __all__ = [
     'Denoiser',
     'DenoiserLoss',
     'EDMDenoiser',
+    'PGDMDenoiser',
 ]
 
 import abc
@@ -30,6 +31,7 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
+from typing import Callable
 
 # isort: split
 from .noise import Schedule
@@ -148,3 +150,48 @@ class EDMDenoiser(Denoiser):
         c_in, c_out, c_skip = c_in[..., None], c_out[..., None], c_skip[..., None]
 
         return c_skip * xt + c_out * self.backbone(c_in * xt, c_noise, **kwargs)
+
+
+class PGDMDenoiser(Denoiser):
+    r"""Creates a Pseudoinverse-Guided Diffusion Model (PGDM) denoiser module.
+
+    References:
+        | Pseudoinverse-Guided Diffusion Models for Inverse Problems (Song et al., 2023)
+        | https://openreview.net/forum?id=9_gsMA8MRKQ
+
+    Arguments:
+        denoiser: A denoiser :math:`\mu_\phi(x_t, t)`.
+        y: An observation :math:`y = A(x)`.
+        A: The measurement function :math:`A`.
+        A_inv: The pseudoinverse :math:`A^\dagger` of :math:`A`.
+    """
+
+    def __init__(
+        self,
+        denoiser: Denoiser,
+        y: Tensor,
+        A: Callable[[Tensor], Tensor],
+        A_inv: Callable[[Tensor], Tensor],
+    ):
+        super().__init__(schedule=denoiser.schedule)
+
+        self.A = A
+        self.A_inv = A_inv
+
+        self.register_buffer('y', A_inv(y))
+
+    def forward(self, xt: Tensor, t: Tensor, **kwargs) -> Tensor:
+        alpha_t, sigma_t = self.schedule(t)
+        var_x_xt = sigma_t**2 / (sigma_t**2 + alpha_t**2)
+
+        with torch.enable_grad():
+            xt = xt.detach().requires_grad_()
+            x_hat = self.denoiser(xt, t, **kwargs)
+
+        def vjp(v):
+            return torch.autograd.grad(x_hat, xt, v)[0]
+
+        grad = self.y - self.A_inv(self.A(x_hat))
+        grad = 1 / var_x_xt * vjp(grad)
+
+        return x_hat + sigma_t**2 / alpha_t * grad
