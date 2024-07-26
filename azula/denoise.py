@@ -22,7 +22,7 @@ where :math:`\lambda_t \in \mathbb{R}_+` is a positive weight.
 __all__ = [
     'Denoiser',
     'DenoiserLoss',
-    'EDM',
+    'EDMDenoiser',
 ]
 
 import abc
@@ -50,11 +50,12 @@ class Denoiser(nn.Module):
         self.schedule = schedule
 
     @abc.abstractmethod
-    def forward(self, xt: Tensor, t: Tensor) -> Tensor:
+    def forward(self, xt: Tensor, t: Tensor, **kwargs) -> Tensor:
         r"""
         Arguments:
             xt: The noisy vector :math:`x_t`, with shape :math:`(*, D)`.
             sigma_t: The time :math:`t`, with shape :math:`(*)`.
+            kwargs: Optional keyword arguments.
 
         Returns:
             The denoising estimate :math:`\mu_\phi(x_t, t)`, with shape :math:`(*, D)`.
@@ -68,7 +69,9 @@ class DenoiserLoss(nn.Module):
 
     Note:
         The weight :math:`\lambda_t` is set to the inverse of the variance of :math:`p(x
-        \mid x_t)` when :math:`p(x) = \mathcal{N}(x \mid 0, 1)`.
+        \mid x_t)` when :math:`p(x) = \mathcal{N}(x \mid 0, 1)`, that is
+
+        .. math:: \lambda_t = \frac{\alpha_t^2}{\sigma_t^2} + 1 \, .
 
     Arguments:
         denoiser: A denoiser :math:`\mu_\phi(x_t, t)`.
@@ -79,11 +82,12 @@ class DenoiserLoss(nn.Module):
 
         self.denoiser = denoiser
 
-    def forward(self, x: Tensor, t: Tensor) -> Tensor:
+    def forward(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
         r"""
         Arguments:
             x: A batch of clean vectors :math:`x_i`, with shape :math:`(N, D)`.
             t: A batch of times :math:`t_i`, with shape :math:`(N)`.
+            kwargs: Optional keyword arguments passed to :py:`self.denoiser`.
 
         Returns:
             The loss :math:`L`, with shape :math:`()`.
@@ -99,16 +103,16 @@ class DenoiserLoss(nn.Module):
 
         xt = alpha_t[..., None] * x + sigma_t[..., None] * torch.randn_like(x)
 
-        error = torch.square(self.denoiser(xt, t) - x)
+        error = torch.square(self.denoiser(xt, t, **kwargs) - x)
         loss = torch.mean(lmbda_t * torch.mean(error, dim=-1))
 
         return loss
 
 
-class EDM(Denoiser):
+class EDMDenoiser(Denoiser):
     r"""Creates a denoiser module with EDM-style preconditioning.
 
-    .. math:: \mu_\phi(x_t, t) = c_s(t) x_t + c_o(t) b_\phi(c_i(t) x_t, c_n(t))
+    .. math:: \mu_\phi(x_t, t) = c_s(t) \, x_t + c_o(t) \, b_\phi(c_i(t) \, x_t, c_n(t))
 
     The preconditioning coefficients are generalized to take the scale :math:`\alpha_t`
     into account.
@@ -133,7 +137,7 @@ class EDM(Denoiser):
 
         self.backbone = backbone
 
-    def forward(self, xt: Tensor, t: Tensor) -> Tensor:
+    def forward(self, xt: Tensor, t: Tensor, **kwargs) -> Tensor:
         alpha_t, sigma_t = self.schedule(t)
 
         c_in = 1 / torch.sqrt(alpha_t**2 + sigma_t**2)
@@ -143,4 +147,4 @@ class EDM(Denoiser):
 
         c_in, c_out, c_skip = c_in[..., None], c_out[..., None], c_skip[..., None]
 
-        return c_skip * xt + c_out * self.backbone(c_in * xt, c_noise)
+        return c_skip * xt + c_out * self.backbone(c_in * xt, c_noise, **kwargs)
