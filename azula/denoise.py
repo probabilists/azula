@@ -21,9 +21,9 @@ divergence
 """
 
 __all__ = [
-    'Gaussian',
-    'GaussianDenoiser',
-    'EDMDenoiser',
+    "Gaussian",
+    "GaussianDenoiser",
+    "EDMDenoiser",
 ]
 
 import abc

@@ -1,9 +1,9 @@
 r"""Neural networks, layers and modules."""
 
 __all__ = [
-    'LayerNorm',
-    'SinEmbedding',
-    'MLP',
+    "LayerNorm",
+    "SinEmbedding",
+    "MLP",
 ]
 
 import torch
@@ -68,7 +68,7 @@ class SinEmbedding(nn.Module):
         freqs = torch.linspace(0, 1, features // 2)
         freqs = 1e4 ** (-freqs)
 
-        self.register_buffer('freqs', freqs)
+        self.register_buffer("freqs", freqs)
 
     def forward(self, p: Tensor) -> Tensor:
         r"""

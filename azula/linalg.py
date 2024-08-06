@@ -1,7 +1,7 @@
 r"""Linear algebra."""
 
 __all__ = [
-    'conjugate_gradient',
+    "conjugate_gradient",
 ]
 
 import torch
@@ -58,16 +58,16 @@ def conjugate_gradient(
 
     x = x.to(dtype)
     r = r.to(dtype)
-    rr = torch.einsum('...i,...i', r, r)
+    rr = torch.einsum("...i,...i", r, r)
     p = r
 
     for _ in range(iterations):
         Ap = A(p.to(b.dtype)).to(dtype)
-        pAp = torch.einsum('...i,...i', p, Ap)
+        pAp = torch.einsum("...i,...i", p, Ap)
         alpha = rr / pAp
         x_ = x + alpha[..., None] * p
         r_ = r - alpha[..., None] * Ap
-        rr_ = torch.einsum('...i,...i', r_, r_)
+        rr_ = torch.einsum("...i,...i", r_, r_)
         beta = rr_ / rr
         p_ = r + beta[..., None] * p
 
