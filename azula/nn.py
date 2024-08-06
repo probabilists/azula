@@ -31,7 +31,8 @@ class LayerNorm(nn.Module):
         super().__init__()
 
         self.dim = dim if isinstance(dim, int) else tuple(dim)
-        self.eps = eps
+
+        self.register_buffer("eps", torch.as_tensor(eps))
 
     def forward(self, x: Tensor) -> Tensor:
         r"""
