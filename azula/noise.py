@@ -31,9 +31,9 @@ are both compatible with the perturbation kernel :math:`p(X_t \mid X)`.
 """
 
 __all__ = [
-    'Schedule',
-    'VESchedule',
-    'VPSchedule',
+    "Schedule",
+    "VESchedule",
+    "VPSchedule",
 ]
 
 import abc
@@ -82,8 +82,8 @@ class VESchedule(Schedule):
     def __init__(self, sigma_min: float = 1e-3, sigma_max: float = 1e2):
         super().__init__()
 
-        self.register_buffer('log_sigma_min', torch.log(torch.as_tensor(sigma_min)))
-        self.register_buffer('log_sigma_max', torch.log(torch.as_tensor(sigma_max)))
+        self.register_buffer("log_sigma_min", torch.log(torch.as_tensor(sigma_min)))
+        self.register_buffer("log_sigma_max", torch.log(torch.as_tensor(sigma_max)))
 
     def alpha(self, t: Tensor) -> Tensor:
         return torch.ones_like(t)
@@ -117,8 +117,8 @@ class VPSchedule(Schedule):
     def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
         super().__init__()
 
-        self.register_buffer('alpha_min', torch.as_tensor(alpha_min))
-        self.register_buffer('sigma_min', torch.as_tensor(sigma_min))
+        self.register_buffer("alpha_min", torch.as_tensor(alpha_min))
+        self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
 
     def alpha(self, t: Tensor) -> Tensor:
         return torch.exp(-torch.log(self.alpha_min) * t**2)

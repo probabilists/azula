@@ -24,9 +24,9 @@ to :math:`p(X_{t_i})`, including the last one :math:`x_{t_0} = x_0`.
 """
 
 __all__ = [
-    'Sampler',
-    'DDPMSampler',
-    'DDIMSampler',
+    "Sampler",
+    "DDPMSampler",
+    "DDIMSampler",
 ]
 
 import abc
@@ -50,7 +50,7 @@ class Sampler(nn.Module, abc.ABC):
     def __init__(self, steps: int):
         super().__init__()
 
-        self.register_buffer('timesteps', torch.linspace(1, 0, steps + 1))
+        self.register_buffer("timesteps", torch.linspace(1, 0, steps + 1))
 
     @torch.no_grad()
     def forward(self, x_1: Tensor, **kwargs) -> Tensor:
@@ -158,7 +158,7 @@ class DDIMSampler(Sampler):
 
         self.denoiser = denoiser
 
-        self.register_buffer('eta', torch.as_tensor(eta))
+        self.register_buffer("eta", torch.as_tensor(eta))
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)
