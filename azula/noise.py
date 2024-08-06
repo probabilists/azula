@@ -4,30 +4,30 @@ A noise schedule is a mapping from a time :math:`t \in [0, 1]` to the signal sca
 :math:`\alpha_t \in \mathbb{R}_+` and the noise scale :math:`\sigma_t \in \mathbb{R}_+`
 in a perturbation kernel
 
-.. math:: p(x_t \mid x) = \mathcal{N}(x_t \mid \alpha_t x_t, \sigma_t^2 I)
+.. math:: p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X_t, \sigma_t^2 I)
 
-from a "clean" random variable :math:`x` to a "noisy" random variable :math:`x_t`. The
+from a "clean" random variable :math:`X` to a "noisy" random variable :math:`X_t`. The
 only constraint is for the signal-to-noise (SNR) ratio :math:`\frac{\alpha_t}{\sigma_t}`
-to be (strictly) monotonically decreasing with respect to the time :math:`t`. Typically,
-the initial signal scale :math:`\alpha_0` is set to 1 and the initial noise is small
-enough (:math:`0 < \sigma_0 \ll 1`) that :math:`x_0` is almost equivalent to :math:`x`.
+to be monotonically decreasing with respect to the time :math:`t`. Typically, the
+initial signal scale :math:`\alpha_0` is set to 1 and the initial noise is small enough
+(:math:`0 < \sigma_0 \ll 1`) that :math:`X_0` is almost equivalent to :math:`X`.
 
-Note that the relation between :math:`x_s` and :math:`x_t` (:math:`0 \leq s \leq t`) is
+Note that the relation between :math:`X_s` and :math:`X_t` (:math:`0 \leq s \leq t`) is
 not enforced by the noise schedule. For example,
 
 .. math::
-    z & \sim \mathcal{N}(0, I) \\
-    x_s & = \alpha_s x + \sigma_s z \\
-    x_t & = \alpha_t x + \sigma_t z
+    Z & \sim \mathcal{N}(0, I) \\
+    X_s & = \alpha_s X + \sigma_s Z \\
+    X_t & = \alpha_t X + \sigma_t Z
 
 and
 
 .. math::
-    z_1, z_2 & \sim \mathcal{N}(0, I) \\
-    x_s & = \alpha_s x + \sigma_s z_1 \\
-    x_t & = \frac{\alpha_t}{\alpha_s} x_s + \sqrt{\sigma_t^2 - \frac{\alpha_t^2}{\alpha_s^2} \sigma_s^2} \, z_2
+    Z_1, Z_2 & \sim \mathcal{N}(0, I) \\
+    X_s & = \alpha_s X + \sigma_s Z_1 \\
+    X_t & = \frac{\alpha_t}{\alpha_s} X_s + \sqrt{\sigma_t^2 - \frac{\alpha_t^2}{\alpha_s^2} \sigma_s^2} \, Z_2
 
-are both compatible with the perturbation kernel :math:`p(x_t \mid x)`.
+are both compatible with the perturbation kernel :math:`p(X_t \mid X)`.
 """
 
 __all__ = [

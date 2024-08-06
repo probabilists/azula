@@ -1,46 +1,81 @@
 r"""Denoisers, parametrizations and training objectives.
 
-For a distribution :math:`p(x)` over :math:`\mathbb{R}^D` and a perturbation kernel
+For a distribution :math:`p(X)` over :math:`\mathbb{R}^D` and a perturbation kernel
 
-.. math:: p(x_t \mid x) = \mathcal{N}(x_t \mid \alpha_t x, \sigma_t^2 I) \, ,
+.. math:: p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X, \sigma_t^2 I) \, ,
 
-the optimal denoiser is the mean :math:`\mathbb{E}[x \mid x_t]` of the denoising
-posterior
+the goal of a denoiser is to predict :math:`X` given :math:`X_t`, that is to infer the
+posterior distribution
 
-.. math:: p(x \mid x_t) = \frac{p(x) \, p(x_t \mid x)}{p(x_t)} \, .
+.. math:: p(X \mid X_t) = \frac{p(X) \, p(X_t \mid X)}{p(X_t)} \, .
 
-Typically, the optimal denoiser is unknown, but can be approximated by a neural network
-:math:`\mu_\phi(x_t, t)` trained to minimize the denoising objective
+A denoiser is therefore an approximation :math:`q_\phi(X \mid X_t)` of the posterior
+:math:`p(X \mid X_t)` and its objective is to minimize the Kullback-Leibler (KL)
+divergence
 
-.. math:: \arg\min_\phi
-    \mathbb{E}_{\mathcal{U}(t | 0, 1)} \mathbb{E}_{p(x)} \mathbb{E}_{p(x_t \mid x)}
-    \big[ \lambda_t \| \mu_\phi(x_t, t) - x \|^2 \big]
-
-where :math:`\lambda_t \in \mathbb{R}_+` is a positive weight.
+.. math::
+    & \arg \min_\phi \mathbb{E}_{x_t \,\sim\, p(X_t)}
+        \big[ \mathrm{KL}( p(X \mid x_t) \parallel q_\phi(X \mid x_t) ) \big] \\
+    = \, & \arg \min_\phi \mathbb{E}_{x, x_t \,\sim\, p(X, X_t)}
+        \big[ -\log q_\phi(x \mid x_t) \big] \, .
 """
 
 __all__ = [
-    'Denoiser',
-    'DenoiserLoss',
+    'Gaussian',
+    'GaussianDenoiser',
     'EDMDenoiser',
-    'PGDMDenoiser',
 ]
 
 import abc
+import math
 import torch
 import torch.nn as nn
 
+from dataclasses import dataclass
 from torch import Tensor
-from typing import Callable
 
 # isort: split
 from .noise import Schedule
 
 
-class Denoiser(nn.Module):
-    r"""Abstract denoiser module.
+@dataclass
+class Gaussian:
+    r"""Creates a Gaussian distribution :math:`\mathcal{N}(\mu, \Sigma)`.
 
-    .. math:: \mu_\phi(x_t, t) \approx \mathbb{E}[x \mid x_t]
+    Only diagonal covariances :math:`\Sigma = \operatorname{diag}(\sigma^2)` are
+    currently supported.
+
+    Arguments:
+        mean: The mean :math:`\mu`, with shape :math:`(*, D)`.
+        var: The variance :math:`\sigma^2`, with shape :math:`(*, D)`.
+    """
+
+    mean: Tensor
+    var: Tensor
+
+    def log_prob(self, x: Tensor) -> Tensor:
+        r"""
+        Arguments:
+            x: A vector :math:`x`, with shape :math:`(*, D)`.
+
+        Returns:
+            The log-density :math:`\log \mathcal{N}(x \mid \mu, \Sigma)`, with shape
+            :math:`(*)`.
+        """
+
+        log_p = -((x - self.mean) ** 2 / self.var + torch.log(2 * math.pi * self.var)) / 2
+        log_p = torch.sum(log_p, dim=-1)
+
+        return log_p
+
+
+class GaussianDenoiser(nn.Module):
+    r"""Abstract Gaussian denoiser module.
+
+    .. math:: q_\phi(X \mid X_t) = \mathcal{N}(X \mid \mu_\phi(X_t), \Sigma_\phi(X_t))
+
+    The optimal Gaussian denoiser estimates the mean :math:`\mathbb{E}[X \mid X_t]` and
+    covariance :math:`\mathbb{V}[X \mid X_t]` of the posterior :math:`p(X \mid X_t)`.
 
     Arguments:
         schedule: A noise schedule.
@@ -52,78 +87,60 @@ class Denoiser(nn.Module):
         self.schedule = schedule
 
     @abc.abstractmethod
-    def forward(self, xt: Tensor, t: Tensor, **kwargs) -> Tensor:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         r"""
         Arguments:
-            xt: The noisy vector :math:`x_t`, with shape :math:`(*, D)`.
+            x_t: A noisy vector :math:`x_t`, with shape :math:`(*, D)`.
             sigma_t: The time :math:`t`, with shape :math:`(*)`.
             kwargs: Optional keyword arguments.
 
         Returns:
-            The denoising estimate :math:`\mu_\phi(x_t, t)`, with shape :math:`(*, D)`.
+            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t), \Sigma_\phi(x_t))`.
         """
 
         pass
 
-
-class DenoiserLoss(nn.Module):
-    r"""Creates a module that calculates the denoising loss.
-
-    Note:
-        The weight :math:`\lambda_t` is set to the inverse of the variance of :math:`p(x
-        \mid x_t)` when :math:`p(x) = \mathcal{N}(x \mid 0, 1)`, that is
-
-        .. math:: \lambda_t = \frac{\alpha_t^2}{\sigma_t^2} + 1 \, .
-
-    Arguments:
-        denoiser: A denoiser :math:`\mu_\phi(x_t, t)`.
-    """
-
-    def __init__(self, denoiser: Denoiser):
-        super().__init__()
-
-        self.denoiser = denoiser
-
-    def forward(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
+    def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
         r"""
         Arguments:
-            x: A batch of clean vectors :math:`x_i`, with shape :math:`(N, D)`.
-            t: A batch of times :math:`t_i`, with shape :math:`(N)`.
-            kwargs: Optional keyword arguments passed to :py:`self.denoiser`.
+            x: A clean vector :math:`x`, with shape :math:`(*, D)`.
+            t: The time :math:`t`, with shape :math:`(*)`.
+            kwargs: Optional keyword arguments.
 
         Returns:
-            The loss :math:`L`, with shape :math:`()`.
+            The negative log-likelihood
 
-            .. math:: L = \frac{1}{N \times D} \sum_{i = 1}^{N}
-                \lambda_{t_i} \| \mu_\phi(\alpha_{t_i} x_i + \sigma_{t_i} z_i, t_i) - x_i \|^2
+            .. math:: -\log \mathcal{N}(x \mid \mu_\phi(x_t), \Sigma_\phi(x_t))
 
-            where :math:`z_i \sim \mathcal{N}(0, I)`.
+            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(*)`.
         """
 
-        alpha_t, sigma_t = self.denoiser.schedule(t)
-        lmbda_t = (alpha_t / sigma_t) ** 2 + 1
+        alpha_t, sigma_t = self.schedule(t)
 
-        xt = alpha_t[..., None] * x + sigma_t[..., None] * torch.randn_like(x)
+        z = torch.randn_like(x)
+        x_t = alpha_t[..., None] * x + sigma_t[..., None] * z
 
-        error = torch.square(self.denoiser(xt, t, **kwargs) - x)
-        loss = torch.mean(lmbda_t * torch.mean(error, dim=-1))
+        q = self(x_t, t, **kwargs)
 
-        return loss
+        return -q.log_prob(x)
 
 
-class EDMDenoiser(Denoiser):
-    r"""Creates a denoiser module with EDM-style preconditioning.
+class EDMDenoiser(GaussianDenoiser):
+    r"""Creates a Gaussian denoiser with EDM-style preconditioning.
 
-    .. math:: \mu_\phi(x_t, t) = c_s(t) \, x_t + c_o(t) \, b_\phi(c_i(t) \, x_t, c_n(t))
+    .. math::
+        \mu_\phi(x_t) & = c_\mathrm{skip}(t) \, x_t +
+            c_\mathrm{out}(t) \, b_\phi(c_\mathrm{in}(t) \, x_t, c_\mathrm{noise}(t)) \\
+        \sigma^2_\phi(x_t) & = \frac{\sigma_t^2}{\alpha_t^2 + \sigma_t^2}
 
     The preconditioning coefficients are generalized to take the scale :math:`\alpha_t`
     into account.
 
     .. math::
-        c_i(t) & = \frac{1}{\sqrt{\alpha_t^2 + \sigma_t^2}} \\
-        c_o(t) & = \frac{\sigma_t}{\sqrt{\alpha_t^2 + \sigma_t^2}} \\
-        c_s(t) & = \frac{\alpha_t}{\alpha_t^2 + \sigma_t^2} \\
-        c_n(t) & = \log \frac{\sigma_t}{\alpha_t}
+        c_\mathrm{in}(t) & = \frac{1}{\sqrt{\alpha_t^2 + \sigma_t^2}} \\
+        c_\mathrm{out}(t) & = \frac{\sigma_t}{\sqrt{\alpha_t^2 + \sigma_t^2}} \\
+        c_\mathrm{skip}(t) & = \frac{\alpha_t}{\alpha_t^2 + \sigma_t^2} \\
+        c_\mathrm{noise}(t) & = \log \frac{\sigma_t}{\alpha_t}
 
     References:
         | Elucidating the Design Space of Diffusion-Based Generative Models (Karras et al., 2022)
@@ -131,7 +148,7 @@ class EDMDenoiser(Denoiser):
 
     Arguments:
         backbone: A noise conditional network :math:`b_\phi(x, \log \sigma)`.
-        kwargs: Keyword arguments passed to :class:`Denoiser`.
+        kwargs: Keyword arguments passed to :class:`GaussianDenoiser`.
     """
 
     def __init__(self, backbone: nn.Module, **kwargs):
@@ -139,7 +156,7 @@ class EDMDenoiser(Denoiser):
 
         self.backbone = backbone
 
-    def forward(self, xt: Tensor, t: Tensor, **kwargs) -> Tensor:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)
 
         c_in = 1 / torch.sqrt(alpha_t**2 + sigma_t**2)
@@ -149,49 +166,8 @@ class EDMDenoiser(Denoiser):
 
         c_in, c_out, c_skip = c_in[..., None], c_out[..., None], c_skip[..., None]
 
-        return c_skip * xt + c_out * self.backbone(c_in * xt, c_noise, **kwargs)
+        mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_noise, **kwargs)
+        var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
+        var = var[..., None]
 
-
-class PGDMDenoiser(Denoiser):
-    r"""Creates a Pseudoinverse-Guided Diffusion Model (PGDM) denoiser module.
-
-    References:
-        | Pseudoinverse-Guided Diffusion Models for Inverse Problems (Song et al., 2023)
-        | https://openreview.net/forum?id=9_gsMA8MRKQ
-
-    Arguments:
-        denoiser: A denoiser :math:`\mu_\phi(x_t, t)`.
-        y: An observation :math:`y = A(x)`.
-        A: The measurement function :math:`A`.
-        A_inv: The pseudoinverse :math:`A^\dagger` of :math:`A`.
-    """
-
-    def __init__(
-        self,
-        denoiser: Denoiser,
-        y: Tensor,
-        A: Callable[[Tensor], Tensor],
-        A_inv: Callable[[Tensor], Tensor],
-    ):
-        super().__init__(schedule=denoiser.schedule)
-
-        self.A = A
-        self.A_inv = A_inv
-
-        self.register_buffer('y', A_inv(y))
-
-    def forward(self, xt: Tensor, t: Tensor, **kwargs) -> Tensor:
-        alpha_t, sigma_t = self.schedule(t)
-        var_x_xt = sigma_t**2 / (sigma_t**2 + alpha_t**2)
-
-        with torch.enable_grad():
-            xt = xt.detach().requires_grad_()
-            x_hat = self.denoiser(xt, t, **kwargs)
-
-        def vjp(v):
-            return torch.autograd.grad(x_hat, xt, v)[0]
-
-        grad = self.y - self.A_inv(self.A(x_hat))
-        grad = 1 / var_x_xt * vjp(grad)
-
-        return x_hat + sigma_t**2 / alpha_t * grad
+        return Gaussian(mean=mean, var=var)
