@@ -99,7 +99,7 @@ class VPSchedule(Schedule):
     r"""Creates a variance preserving (VP) noise schedule.
 
     .. math::
-        \alpha_t & = \exp(-t^2 \log \alpha_\min) \\
+        \alpha_t & = \exp(t^2 \log \alpha_\min) \\
         \sigma_t & = \sqrt{ 1 - \alpha_t^2 + \sigma_\min^2 }
 
     References:
@@ -110,8 +110,8 @@ class VPSchedule(Schedule):
         | https://arxiv.org/abs/2011.13456
 
     Arguments:
-        alpha_min: The final signal scale :math:`\alpha_\min \in \mathbb{R}_+`.
-        sigma_min: The initial noise scale :math:`\sigma_\min \in \mathbb{R}_+`.
+        alpha_min: The final signal scale :math:`\alpha_\min \in [0, 1]`.
+        sigma_min: The initial noise scale :math:`\sigma_\min \in [0, 1]`.
     """
 
     def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
@@ -121,7 +121,7 @@ class VPSchedule(Schedule):
         self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
 
     def alpha(self, t: Tensor) -> Tensor:
-        return torch.exp(-torch.log(self.alpha_min) * t**2)
+        return torch.exp(torch.log(self.alpha_min) * t**2)
 
     def sigma(self, t: Tensor) -> Tensor:
         return torch.sqrt(1 - self.alpha(t) ** 2 + self.sigma_min**2)
