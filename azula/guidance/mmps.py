@@ -13,6 +13,7 @@ from typing import Callable
 # isort: split
 from ..denoise import Gaussian, GaussianDenoiser
 from ..linalg.solve import cg, gmres
+from ..noise import Schedule
 
 
 class MMPSDenoiser(GaussianDenoiser):
@@ -38,7 +39,7 @@ class MMPSDenoiser(GaussianDenoiser):
         solver: str = "gmres",
         iterations: int = 1,
     ):
-        super().__init__(schedule=denoiser.schedule)
+        super().__init__()
 
         self.denoiser = denoiser
 
@@ -53,6 +54,10 @@ class MMPSDenoiser(GaussianDenoiser):
             self.solve = partial(gmres, iterations=iterations)
         else:
             raise ValueError(f"Unknown solver '{solver}'.")
+
+    @property
+    def schedule(self) -> Schedule:
+        return self.denoiser.schedule
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)

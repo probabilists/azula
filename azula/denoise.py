@@ -23,7 +23,7 @@ divergence
 __all__ = [
     "Gaussian",
     "GaussianDenoiser",
-    "EDMDenoiser",
+    "PreconditionedDenoiser",
 ]
 
 import abc
@@ -76,22 +76,16 @@ class GaussianDenoiser(nn.Module):
 
     The optimal Gaussian denoiser estimates the mean :math:`\mathbb{E}[X \mid X_t]` and
     covariance :math:`\mathbb{V}[X \mid X_t]` of the posterior :math:`p(X \mid X_t)`.
-
-    Arguments:
-        schedule: A noise schedule.
     """
 
-    def __init__(self, schedule: Schedule):
-        super().__init__()
-
-        self.schedule = schedule
+    schedule: Schedule
 
     @abc.abstractmethod
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         r"""
         Arguments:
             x_t: A noisy vector :math:`x_t`, with shape :math:`(*, D)`.
-            sigma_t: The time :math:`t`, with shape :math:`(*)`.
+            t: The time :math:`t`, with shape :math:`(*)`.
             kwargs: Optional keyword arguments.
 
         Returns:
@@ -118,14 +112,14 @@ class GaussianDenoiser(nn.Module):
         alpha_t, sigma_t = self.schedule(t)
 
         z = torch.randn_like(x)
-        x_t = alpha_t[..., None] * x + sigma_t[..., None] * z
+        x_t = alpha_t * x + sigma_t * z
 
         q = self(x_t, t, **kwargs)
 
         return -q.log_prob(x)
 
 
-class EDMDenoiser(GaussianDenoiser):
+class PreconditionedDenoiser(GaussianDenoiser):
     r"""Creates a Gaussian denoiser with EDM-style preconditioning.
 
     .. math::
@@ -148,13 +142,14 @@ class EDMDenoiser(GaussianDenoiser):
 
     Arguments:
         backbone: A noise conditional network :math:`b_\phi(x, \log \sigma)`.
-        kwargs: Keyword arguments passed to :class:`GaussianDenoiser`.
+        schedule: A noise schedule.
     """
 
-    def __init__(self, backbone: nn.Module, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, backbone: nn.Module, schedule: Schedule):
+        super().__init__()
 
         self.backbone = backbone
+        self.schedule = schedule
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)
@@ -164,10 +159,7 @@ class EDMDenoiser(GaussianDenoiser):
         c_skip = alpha_t / (alpha_t**2 + sigma_t**2)
         c_noise = torch.log(sigma_t / alpha_t)
 
-        c_in, c_out, c_skip = c_in[..., None], c_out[..., None], c_skip[..., None]
-
         mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_noise, **kwargs)
         var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
-        var = var[..., None]
 
         return Gaussian(mean=mean, var=var)

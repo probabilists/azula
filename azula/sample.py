@@ -165,7 +165,7 @@ class DDIMSampler(Sampler):
         alpha_t, sigma_t = self.denoiser.schedule(t)
 
         tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
-        tau = torch.clip(self.eta * tau, min=0.0, max=1.0)
+        tau = torch.clip(self.eta * tau, min=0, max=1)
 
         eps = torch.randn_like(x_t)
 

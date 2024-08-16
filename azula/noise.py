@@ -54,7 +54,8 @@ class Schedule(nn.Module, abc.ABC):
             t: The time :math:`t`, with shape :math:`(*)`.
 
         Returns:
-            The scales :math:`\alpha_t` and :math:`\sigma_t`, with shape :math:`(*)`.
+            The signal and noise scales :math:`\alpha_t` and :math:`\sigma_t`, with
+            shape :math:`(*, 1)`.
         """
 
         pass
@@ -92,7 +93,7 @@ class VESchedule(Schedule):
         return torch.exp(torch.lerp(self.log_sigma_min, self.log_sigma_max, t))
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
-        return self.alpha(t), self.sigma(t)
+        return self.alpha(t).unsqueeze(-1), self.sigma(t).unsqueeze(-1)
 
 
 class VPSchedule(Schedule):
@@ -127,4 +128,4 @@ class VPSchedule(Schedule):
         return torch.sqrt(1 - self.alpha(t) ** 2 + self.sigma_min**2)
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
-        return self.alpha(t), self.sigma(t)
+        return self.alpha(t).unsqueeze(-1), self.sigma(t).unsqueeze(-1)
