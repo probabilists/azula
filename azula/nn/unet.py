@@ -1,11 +1,8 @@
-r"""Neural networks, layers and modules."""
+r"""U-Net building blocks."""
 
 __all__ = [
-    "LayerNorm",
     "UNetBlock",
     "UNet",
-    "SelfAttentionNd",
-    "SinEmbedding",
 ]
 
 import torch
@@ -14,49 +11,14 @@ import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from torch import Tensor
-from typing import Sequence, Union
+from typing import Dict, Optional, Sequence, Union
 
-
-class LayerNorm(nn.Module):
-    r"""Creates a normalization layer that standardizes features along a dimension.
-
-    .. math:: y = \frac{x - \mathbb{E}[x]}{\sqrt{\mathbb{V}[x] + \epsilon}}
-
-    References:
-       | Layer Normalization (Lei Ba et al., 2016)
-       | https://arxiv.org/abs/1607.06450
-
-    Arguments:
-        dim: The dimension(s) to standardize.
-        eps: A numerical stability term.
-    """
-
-    def __init__(self, dim: Union[int, Sequence[int]], eps: float = 1e-5):
-        super().__init__()
-
-        self.dim = dim if isinstance(dim, int) else tuple(dim)
-
-        self.register_buffer("eps", torch.as_tensor(eps))
-
-    def extra_repr(self) -> str:
-        return f"dim={self.dim}"
-
-    def forward(self, x: Tensor) -> Tensor:
-        r"""
-        Arguments:
-            x: The input tensor :math:`x`, with shape :math:(*).
-
-        Returns:
-            The standardized tensor :math:`y`, with shape :math:`(*)`.
-        """
-
-        variance, mean = torch.var_mean(x, dim=self.dim, keepdim=True)
-
-        return (x - mean) / (variance + self.eps).sqrt()
+# isort: split
+from .normalization import LayerNorm
 
 
 def ConvNd(in_channels: int, out_channels: int, spatial: int = 2, **kwargs) -> nn.Module:
-    r"""Creates an N-dimensional convolutional layer.
+    r"""Returns an N-dimensional convolutional layer.
 
     Arguments:
         in_channels: Number of input channels :math:`C_i`.
@@ -80,21 +42,23 @@ def ConvNd(in_channels: int, out_channels: int, spatial: int = 2, **kwargs) -> n
 
 
 class UNetBlock(nn.Module):
-    r"""Creates a residual U-Net block module.
+    r"""Creates a modulated U-Net block module.
 
     Arguments:
         channels: The number of channels :math:`C`.
-        emb_features: The number of embedding features :math:`D`.
-        dropout: The dropout rate.
+        mod_features: The number of modulating features :math:`D`.
+        attention_heads: The number of attention heads.
+        dropout: The dropout rate in :math:`[0, 1]`.
         spatial: The number of spatial dimensions :math:`N`.
-        kwargs: Keyword arguments passed to :class:`ConvNd`.
+        kwargs: Keyword arguments passed to :class:`torch.nn.Conv2d`.
     """
 
     def __init__(
         self,
         channels: int,
-        emb_features: int,
-        dropout: float = None,
+        mod_features: int,
+        attention_heads: Optional[int] = None,
+        dropout: Optional[float] = None,
         spatial: int = 2,
         **kwargs,
     ):
@@ -102,16 +66,16 @@ class UNetBlock(nn.Module):
 
         # Ada-zero
         self.ada_zero = nn.Sequential(
-            nn.Linear(emb_features, emb_features),
+            nn.Linear(mod_features, mod_features),
             nn.SiLU(),
-            nn.Linear(emb_features, 3 * channels),
+            nn.Linear(mod_features, 3 * channels),
             Rearrange("... (r C) -> r ... C" + " 1" * spatial, r=3),
         )
 
         layer = self.ada_zero[-2]
         layer.weight = nn.Parameter(layer.weight * 1e-2)
 
-        # Convolutional block
+        # Block
         self.block = nn.Sequential(
             LayerNorm(dim=1),
             ConvNd(channels, channels, spatial=spatial, **kwargs),
@@ -120,17 +84,23 @@ class UNetBlock(nn.Module):
             ConvNd(channels, channels, spatial=spatial, **kwargs),
         )
 
-    def forward(self, x: Tensor, t: Tensor) -> Tensor:
+        if attention_heads is not None:
+            self.block.extend([
+                LayerNorm(dim=1),
+                SelfAttentionNd(channels, heads=attention_heads),
+            ])
+
+    def forward(self, x: Tensor, mod: Tensor) -> Tensor:
         r"""
         Arguments:
             x: The input tensor, with shape :math:`(B, C, H_1, ..., H_N)`.
-            t: The embedding vector, with shape :math:`(D)` or :math:`(B, D)`.
+            mod: The modulation vector, with shape :math:`(D)` or :math:`(B, D)`.
 
         Returns:
             The output tensor, with shape :math:`(B, C, H_1, ..., H_N)`.
         """
 
-        a, b, c = self.ada_zero(t)
+        a, b, c = self.ada_zero(mod)
 
         y = (a + 1) * x + b
         y = self.block(y)
@@ -141,16 +111,18 @@ class UNetBlock(nn.Module):
 
 
 class UNet(nn.Module):
-    r"""Creates a U-Net module.
+    r"""Creates a modulated U-Net module.
 
     Arguments:
         in_channels: The number of input channels :math:`C_i`.
         out_channels: The number of output channels :math:`C_o`.
-        emb_features: The number of embedding features :math:`D`.
+        mod_features: The number of modulating features :math:`D`.
         hid_channels: The numbers of channels at each depth.
         hid_blocks: The numbers of hidden blocks at each depth.
-        kernel_size: The kernel size for residual blocks.
-        dropout: The dropout rate for residual blocks.
+        kernel_size: The kernel size of all convolutions.
+        stride: The stride of the downsampling convolutions.
+        attention_heads: The number of attention heads at each depth.
+        dropout: The dropout rate in :math:`[0, 1]`.
         spatial: The number of spatial dimensions.
     """
 
@@ -158,11 +130,13 @@ class UNet(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        emb_features: int,
+        mod_features: int,
         hid_channels: Sequence[int] = (64, 128, 256),
         hid_blocks: Sequence[int] = (3, 3, 3),
         kernel_size: Union[int, Sequence[int]] = 3,
-        dropout: float = None,
+        stride: Union[int, Sequence[int]] = 2,
+        attention_heads: Dict[int, int] = {},  # noqa: B006
+        dropout: Optional[float] = None,
         spatial: int = 2,
     ):
         super().__init__()
@@ -172,7 +146,9 @@ class UNet(nn.Module):
         if isinstance(kernel_size, int):
             kernel_size = [kernel_size] * spatial
 
-        stride = (2,) * spatial
+        if isinstance(stride, int):
+            stride = [stride] * spatial
+
         kwargs = dict(
             kernel_size=tuple(kernel_size),
             padding=tuple(k // 2 for k in kernel_size),
@@ -187,7 +163,8 @@ class UNet(nn.Module):
                 do.append(
                     UNetBlock(
                         hid_channels[i],
-                        emb_features,
+                        mod_features,
+                        attention_heads=attention_heads.get(i, None),
                         dropout=dropout,
                         spatial=spatial,
                         **kwargs,
@@ -196,7 +173,8 @@ class UNet(nn.Module):
                 up.append(
                     UNetBlock(
                         hid_channels[i],
-                        emb_features,
+                        mod_features,
+                        attention_heads=attention_heads.get(i, None),
                         dropout=dropout,
                         spatial=spatial,
                         **kwargs,
@@ -221,7 +199,7 @@ class UNet(nn.Module):
                 up.append(
                     nn.Sequential(
                         LayerNorm(dim=1),
-                        nn.Upsample(scale_factor=stride, mode="nearest"),
+                        nn.Upsample(scale_factor=tuple(stride), mode="nearest"),
                     )
                 )
             else:
@@ -241,11 +219,11 @@ class UNet(nn.Module):
             self.descent.append(do)
             self.ascent.insert(0, up)
 
-    def forward(self, x: Tensor, t: Tensor) -> Tensor:
+    def forward(self, x: Tensor, mod: Tensor) -> Tensor:
         r"""
         Arguments:
             x: The input tensor, with shape :math:`(B, C_i, H_1, ..., H_N)`.
-            t: The embedding vector, with shape :math:`(D)` or :math:`(B, D)`.
+            mod: The modulation vector, with shape :math:`(D)` or :math:`(B, D)`.
 
         Returns:
             The output tensor, with shape :math:`(B, C_o, H_1, ..., H_N)`.
@@ -256,7 +234,7 @@ class UNet(nn.Module):
         for blocks in self.descent:
             for block in blocks:
                 if isinstance(block, UNetBlock):
-                    x = block(x, t)
+                    x = block(x, mod)
                 else:
                     x = block(x)
 
@@ -266,14 +244,14 @@ class UNet(nn.Module):
             y = memory.pop()
             if x is not y:
                 for i in range(2, x.ndim):
-                    if x.shape[i] != y.shape[i]:
+                    if x.shape[i] > y.shape[i]:
                         x = torch.narrow(x, i, 0, y.shape[i])
 
                 x = torch.cat((x, y), dim=1)
 
             for block in blocks:
                 if isinstance(block, UNetBlock):
-                    x = block(x, t)
+                    x = block(x, mod)
                 else:
                     x = block(x)
 
@@ -289,7 +267,7 @@ class SelfAttentionNd(nn.MultiheadAttention):
         kwargs: Keyword arguments passed to :class:`torch.nn.MultiheadAttention`.
     """
 
-    def __init__(channels: int, heads: int = 1, **kwargs):
+    def __init__(self, channels: int, heads: int = 1, **kwargs):
         super().__init__(embed_dim=channels, num_heads=heads, batch_first=True, **kwargs)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -306,48 +284,3 @@ class SelfAttentionNd(nn.MultiheadAttention):
         y = rearrange(y, "B L C -> B C L").reshape(x.shape)
 
         return y
-
-
-class SinEmbedding(nn.Module):
-    r"""Creates a sinusoidal positional embedding.
-
-    .. math::
-        e_{2i} & = \sin \left( p \times 10000^\frac{-2i}{D} \right) \\
-        e_{2i+1} & = \cos \left( p \times 10000^\frac{-2i}{D} \right)
-
-    References:
-        | Attention Is All You Need (Vaswani et al., 2017)
-        | https://arxiv.org/abs/1706.03762
-
-    Arguments:
-        features: The number of embedding features :math:`D`. Must be even.
-    """
-
-    def __init__(self, features: int):
-        super().__init__()
-
-        assert features % 2 == 0
-
-        freqs = torch.linspace(0, 1, features // 2)
-        freqs = 1e4 ** (-freqs)
-
-        self.register_buffer("freqs", freqs)
-
-    def forward(self, p: Tensor) -> Tensor:
-        r"""
-        Arguments:
-            p: The position :math:`p`, with shape :math:`(*)`.
-
-        Returns:
-            The embedding vector :math:`e`, with shape :math:`(*, D)`.
-        """
-
-        p = p[..., None]
-
-        return torch.cat(
-            (
-                torch.sin(p * self.freqs),
-                torch.cos(p * self.freqs),
-            ),
-            dim=-1,
-        )
