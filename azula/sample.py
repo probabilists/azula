@@ -123,9 +123,10 @@ class DDPMSampler(Sampler):
         tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
         eps = torch.randn_like(x_t)
 
-        x_hat = self.denoiser(x_t, t, **kwargs).mean
-        x_s = alpha_s * x_hat
-        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * x_hat)
+        q = self.denoiser(x_t, t, **kwargs)
+
+        x_s = alpha_s * q.mean
+        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q.mean)
         x_s = x_s + sigma_s * torch.sqrt(tau) * eps
 
         return x_s
@@ -166,12 +167,12 @@ class DDIMSampler(Sampler):
 
         tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
         tau = torch.clip(self.eta * tau, min=0, max=1)
-
         eps = torch.randn_like(x_t)
 
-        x_hat = self.denoiser(x_t, t, **kwargs).mean
-        x_s = alpha_s * x_hat
-        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * x_hat)
+        q = self.denoiser(x_t, t, **kwargs)
+
+        x_s = alpha_s * q.mean
+        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q.mean)
         x_s = x_s + sigma_s * torch.sqrt(tau) * eps
 
         return x_s

@@ -1,4 +1,9 @@
-r"""Conditional sampling and guidance."""
+r"""Moment matching posterior sampling (MMPS) internals.
+
+References:
+    | Learning Diffusion Priors from Observations by Expectation Maximization (Rozet et al., 2024)
+    | https://arxiv.org/abs/2405.13712
+"""
 
 __all__ = [
     "MMPSDenoiser",
@@ -17,17 +22,15 @@ from ..noise import Schedule
 
 
 class MMPSDenoiser(GaussianDenoiser):
-    r"""Creates a Moment Matching Posterior Sampling (MMPS) denoiser module.
-
-    References:
-        | Learning Diffusion Priors from Observations by Expectation Maximization (Rozet et al., 2024)
-        | https://arxiv.org/abs/2405.13712
+    r"""Creates a MMPS denoiser module.
 
     Arguments:
         denoiser: A Gaussian denoiser.
         y: An observation :math:`y \sim \mathcal{N}(Ax, \Sigma_y)`.
         A: The forward operator :math:`x \mapsto Ax`.
         var_y: The noise variance :math:`\Sigma_y`.
+        solver: The linear solver name (:py:`"cg"` or :py:`"gmres"`).
+        iterations: The number of solver iterations.
     """
 
     def __init__(
