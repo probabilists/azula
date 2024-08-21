@@ -14,6 +14,7 @@ Azula is a Python package that implements diffusion models in `PyTorch <https://
     :hidden:
     :maxdepth: 2
 
+    tutorials.rst
     api.rst
 
 .. toctree::
