@@ -30,7 +30,7 @@ In Azula's formalism, a diffusion model is the composition of three elements: a 
 
 * A sampler defines a series of transition kernels $q(X_s \mid X_t)$ from $t$ to $s < t$ based on a noise schedule and a denoiser. Simulating these transitions from $t = 1$ to $0$ samples approximately from $p(X)$.
 
-This formalism is closely followed in the `azula` module.
+This formalism is closely followed by Azula's API.
 
 ```python
 from azula.denoise import PreconditionedDenoiser
