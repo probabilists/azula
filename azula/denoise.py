@@ -63,7 +63,9 @@ class Gaussian:
             :math:`(*)`.
         """
 
-        log_p = -((x - self.mean) ** 2 / self.var + torch.log(2 * math.pi * self.var)) / 2
+        log_p = (
+            -((x - self.mean) ** 2 / self.var + torch.log(self.var) + math.log(2 * math.pi)) / 2
+        )
         log_p = torch.sum(log_p, dim=-1)
 
         return log_p
@@ -157,7 +159,7 @@ class PreconditionedDenoiser(GaussianDenoiser):
         c_in = 1 / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_out = sigma_t / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_skip = alpha_t / (alpha_t**2 + sigma_t**2)
-        c_noise = torch.log(sigma_t / alpha_t)
+        c_noise = torch.log(sigma_t / alpha_t).squeeze(dim=-1)
 
         mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_noise, **kwargs)
         var = sigma_t**2 / (alpha_t**2 + sigma_t**2)

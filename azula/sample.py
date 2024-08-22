@@ -34,6 +34,7 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
+from typing import Optional
 
 # isort: split
 from .denoise import GaussianDenoiser
@@ -151,23 +152,31 @@ class DDIMSampler(Sampler):
         denoiser: A Gaussian denoiser.
         eta: The stochasticity hyperparameter :math:`\eta \in \mathbb{R}_+`.
             If :math:`\eta = 1`, :class:`DDIMSampler` is equivalent to :class:`DDPMSampler`.
+            If :py:`eta is None`, :math:`\eta = 0` and the sampler is deterministic.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, eta: float = 0.0, **kwargs):
+    def __init__(self, denoiser: GaussianDenoiser, eta: Optional[float] = None, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
 
-        self.register_buffer("eta", torch.as_tensor(eta))
+        if eta is None:
+            self.register_buffer("eta", None)
+        else:
+            self.register_buffer("eta", torch.as_tensor(eta))
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)
         alpha_t, sigma_t = self.denoiser.schedule(t)
 
-        tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
-        tau = torch.clip(self.eta * tau, min=0, max=1)
-        eps = torch.randn_like(x_t)
+        if self.eta is None:
+            tau = torch.zeros((), dtype=t.dtype, device=t.device)
+            eps = torch.zeros((), dtype=x_t.dtype, device=x_t.device)
+        else:
+            tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
+            tau = torch.clip(self.eta * tau, min=0, max=1)
+            eps = torch.randn_like(x_t)
 
         q = self.denoiser(x_t, t, **kwargs)
 

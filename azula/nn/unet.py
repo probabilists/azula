@@ -85,10 +85,8 @@ class UNetBlock(nn.Module):
         )
 
         if attention_heads is not None:
-            self.block.extend([
-                LayerNorm(dim=1),
-                SelfAttentionNd(channels, heads=attention_heads),
-            ])
+            self.block.append(LayerNorm(dim=1))
+            self.block.append(SelfAttentionNd(channels, heads=attention_heads))
 
     def forward(self, x: Tensor, mod: Tensor) -> Tensor:
         r"""
@@ -212,6 +210,7 @@ class UNet(nn.Module):
                     ConvNd(
                         hid_channels[i] + hid_channels[i + 1],
                         hid_channels[i],
+                        spatial=spatial,
                         **kwargs,
                     ),
                 )

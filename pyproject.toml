@@ -26,11 +26,12 @@ keywords = [
   "deep learning",
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
 [project.optional-dependencies]
 dev = [
   "pre-commit",
+  "pytest",
   "ruff",
 ]
 
