@@ -1,0 +1,40 @@
+name: Continuous integration
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run pre-commit hooks
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files --config pre-commit.yml
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - {python: "3.9", torch: "1.12"}
+          - {python: "3.10", torch: "2.0"}
+          - {python: "3.11", torch: "2.2"}
+          - {python: "3.12", torch: "2.4"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.version.python }}
+      - name: Install dependencies
+        run: |
+          pip install pytest
+          pip install torch==${{ matrix.version.torch }} torchvision --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install .
+      - name: Run tests
+        run: pytest tests
