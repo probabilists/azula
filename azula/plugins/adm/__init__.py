@@ -1,8 +1,14 @@
 r"""Ablated diffusion model (ADM) plugin.
 
-This plugin depends on the `guided_diffusion` module in the
-https://github.com/openai/guided-diffusion repository. To use it, clone the repository
-to you machine and add it to your Python path.
+This plugin depends on the `guided_diffusion` module in the `openai/guided-diffusion
+<https://github.com/openai/guided-diffusion>`_ repository. To use it, clone the
+repository to you machine
+
+.. code-block:: console
+
+    git clone https://github.com/openai/guided-diffusion
+
+and add it to your Python path.
 
 .. code-block:: python
 
@@ -24,19 +30,23 @@ __all__ = [
 import numpy as np
 import torch
 import torch.nn as nn
-import warnings
 
-try:
-    import gdown
-except ImportError as e:
-    warnings.warn(message=e.msg, category=ImportWarning, stacklevel=1)
-
+from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
-from guided_diffusion import unet  # type: ignore
 from torch import LongTensor, Tensor
 from typing import List, Sequence, Set, Tuple
+
+try:
+    from gdown import cached_download
+except ImportError as e:
+    cached_download = RaiseMock(name="gdown.cached_download", error=e)
+
+try:
+    from guided_diffusion import unet  # type: ignore
+except ImportError as e:
+    unet = RaiseMock(name="guided_diffusion.unet", error=e)
 
 # isort: split
 from . import database
@@ -175,7 +185,7 @@ def load_model(key: str, **kwargs) -> ImprovedDenoiser:
 
     if "drive.google" in url:
         state = torch.load(
-            f=gdown.cached_download(url=url),
+            f=cached_download(url=url),
             **kwargs,
         )
     else:
