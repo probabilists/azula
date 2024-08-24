@@ -65,7 +65,7 @@ def test_UNet(
 
     # Load
     copy = make()
-    copy.load_state_dict(torch.load(tmp_path / "state.pth"))
+    copy.load_state_dict(torch.load(tmp_path / "state.pth", weights_only=True))
 
     unet.eval()
     copy.eval()

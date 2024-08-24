@@ -187,7 +187,7 @@ def load_model(key: str, **kwargs) -> ImprovedDenoiser:
         state = torch.load(
             f=cached_download(url=url),
             **kwargs,
-        )
+        weights_only=True)
     else:
         state = torch.hub.load_state_dict_from_url(
             url=url,
