@@ -52,7 +52,7 @@ def download(
     """
 
     if filename is None:
-        filename = re.sub("[ /\\\\|?%*:'\"<>]", "", url)
+        filename = re.sub("[ /\\\\|?%*:'\"<>]+", ".", url)
         filename = os.path.join(get_dir(), filename)
     else:
         filename = os.path.expanduser(filename)
