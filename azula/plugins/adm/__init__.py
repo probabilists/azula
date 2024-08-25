@@ -186,8 +186,7 @@ def load_model(key: str, **kwargs) -> ImprovedDenoiser:
     if "drive.google" in url:
         state = torch.load(
             f=cached_download(url=url),
-            **kwargs,
-        weights_only=True)
+            **kwargs)
     else:
         state = torch.hub.load_state_dict_from_url(
             url=url,
