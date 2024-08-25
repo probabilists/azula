@@ -1,6 +1,7 @@
 r"""Tests for the azula.hub module."""
 
 import os
+import pytest
 
 from azula.hub import download, get_dir, set_dir
 
@@ -49,6 +50,18 @@ def test_download(tmp_path):
 
         assert "MIT License" in text
         assert "The Probabilists" in text
+
+    # Hash prefix
+    download(
+        url="https://raw.githubusercontent.com/probabilists/azula/master/LICENSE",
+        hash_prefix="sha256:c8adb00fadb8f4bf",
+    )
+
+    with pytest.raises(AssertionError):
+        download(
+            url="https://raw.githubusercontent.com/probabilists/azula/master/LICENSE",
+            hash_prefix="sha256:abcdefghijklmnop",
+        )
 
     # TODO (francois-rozet)
     # Find a URL to test Google Drive download

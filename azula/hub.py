@@ -7,6 +7,7 @@ __all__ = [
 ]
 
 import gdown
+import hashlib
 import os
 import re
 import sys
@@ -37,20 +38,21 @@ def set_dir(cache_dir: str):
 def download(
     url: str,
     filename: Optional[str] = None,
+    hash_prefix: Optional[str] = None,
     quiet: bool = False,
 ) -> str:
     r"""Downloads data at a given URL to a local file.
 
-    If a file with the same name exists, the download is skipped.
-
     Arguments:
         url: A URL. Google Drive URLs are supported.
         filename: A local file name. If :py:`None`, use the sanitized URL instead.
+            If a file with the same name exists, the download is skipped.
+        hash_prefix: The expected hash prefix of the file, formatted as `"alg:prefix"`.
         quiet: Whether to keep it quiet in the terminal or not.
     """
 
     if filename is None:
-        filename = re.sub("[ /\\\\|?%*:\"'<>]", "", url)
+        filename = re.sub("[ /\\\\|?%*:'\"<>]", "", url)
         filename = os.path.join(get_dir(), filename)
     else:
         filename = os.path.expanduser(filename)
@@ -67,5 +69,25 @@ def download(
             gdown.download(url, filename, quiet=quiet)
         else:
             torch.hub.download_url_to_file(url, filename, progress=not quiet)
+
+    if hash_prefix is not None:
+        alg, prefix = hash_prefix.split(":")
+        digest = hashlib.new(alg)
+
+        with open(filename, "rb") as f:  # adapted from hashlib.file_digest
+            buffer = bytearray(2**20)  # reusable 1MB buffer
+            view = memoryview(buffer)
+            while True:
+                size = f.readinto(buffer)
+                if size == 0:  # end of file
+                    break
+                digest.update(view[:size])
+
+        hex_hash = digest.hexdigest()
+
+        assert hex_hash.startswith(prefix), (
+            f"The hash of the downloaded file ({alg}:{hex_hash}) does not match "
+            f"the expected hash prefix ({alg}:{prefix})."
+        )
 
     return filename
