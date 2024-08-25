@@ -31,17 +31,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
+from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
+from azula.plugins.utils import RaiseMock
 from torch import LongTensor, Tensor
 from typing import List, Sequence, Set, Tuple
-
-try:
-    from gdown import cached_download
-except ImportError as e:
-    cached_download = RaiseMock(name="gdown.cached_download", error=e)
 
 try:
     from guided_diffusion import unet  # type: ignore
@@ -172,7 +168,7 @@ def load_model(key: str, **kwargs) -> ImprovedDenoiser:
 
     Arguments:
         key: The pre-trained model key.
-        kwargs: Keyword arguments passed to :func:`torch.hub.load`.
+        kwargs: Keyword arguments passed to :func:`torch.load`.
 
     Returns:
         A pre-trained denoiser.
@@ -182,17 +178,7 @@ def load_model(key: str, **kwargs) -> ImprovedDenoiser:
     kwargs.setdefault("weights_only", True)
 
     url, config = database.get(key)
-
-    if "drive.google" in url:
-        state = torch.load(
-            f=cached_download(url=url),
-            **kwargs,
-        )
-    else:
-        state = torch.hub.load_state_dict_from_url(
-            url=url,
-            **kwargs,
-        )
+    state = torch.load(download(url), **kwargs)
 
     denoiser = make_model(**config)
     denoiser.backbone.wrappee.load_state_dict(state)

@@ -1,4 +1,4 @@
-r"""Module helpers."""
+r"""Utilities for modules and networks."""
 
 import torch
 import torch.nn as nn

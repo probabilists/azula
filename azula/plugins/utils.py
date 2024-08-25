@@ -1,11 +1,10 @@
-r"""Utilities for debugging."""
+r"""Utilities for plugins."""
 
-from typing import Any
 from unittest.mock import Mock
 
 
 class RaiseMock(Mock):
-    r"""Creates an object that raises an error whenever it or its children are called.
+    r"""Creates an object that raises an error whenever it or its attributes are called.
 
     Arguments:
         error: The error to be raised.
@@ -14,5 +13,5 @@ class RaiseMock(Mock):
     def __init__(self, error: Exception, **kwargs):
         super().__init__(side_effect=error, **kwargs)
 
-    def _get_child_mock(self, **kwargs: Any) -> Mock:
+    def _get_child_mock(self, **kwargs) -> Mock:
         return super()._get_child_mock(error=self.side_effect, **kwargs)
