@@ -65,7 +65,7 @@ class Sampler(nn.Module, abc.ABC):
     ) -> Tensor:
         r"""Draws an initial noisy vector :math:`x_1`.
 
-        .. math:: x_1 \sim \matcal{N}(\alpha_1 \mathbb{E}[X], \alpha_1^2 \mathbb{V}[X] + \sigma_1^2 I)
+        .. math:: x_1 \sim \mathcal{N}(\alpha_1 \mathbb{E}[X], \alpha_1^2 \mathbb{V}[X] + \sigma_1^2 I)
 
         Arguments:
             shape: The shape :math:`(*, D)` of the vector.
