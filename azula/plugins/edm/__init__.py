@@ -76,7 +76,7 @@ def list_models() -> List[str]:
 
 
 def load_model(key: str) -> GaussianDenoiser:
-    r"""Loads a pre-trained EDM model.
+    r"""Loads a pre-trained EDM denoiser.
 
     Arguments:
         key: The pre-trained model key.

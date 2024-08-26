@@ -165,7 +165,7 @@ def list_models() -> List[str]:
 
 
 def load_model(key: str, **kwargs) -> GaussianDenoiser:
-    r"""Loads a pre-trained ADM model.
+    r"""Loads a pre-trained ADM denoiser.
 
     Arguments:
         key: The pre-trained model key.

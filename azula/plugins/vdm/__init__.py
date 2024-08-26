@@ -68,13 +68,14 @@ class VelocityDenoiser(GaussianDenoiser):
 
     Arguments:
         backbone: A time conditional network.
+        schedule: A noise schedule.
     """
 
-    def __init__(self, backbone: nn.Module):
+    def __init__(self, backbone: nn.Module, schedule: Schedule):
         super().__init__()
 
         self.backbone = backbone
-        self.schedule = AngularSchedule()
+        self.schedule = schedule
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)
@@ -92,7 +93,7 @@ def list_models() -> List[str]:
 
 
 def load_model(key: str, **kwargs) -> GaussianDenoiser:
-    r"""Loads a pre-trained ADM model.
+    r"""Loads a pre-trained VDM denoiser.
 
     Arguments:
         key: The pre-trained model key.
@@ -129,4 +130,6 @@ def make_model(
         shape=(image_channels, image_size, image_size),
     )
 
-    return VelocityDenoiser(backbone)
+    schedule = AngularSchedule()
+
+    return VelocityDenoiser(backbone, schedule)
