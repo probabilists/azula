@@ -10,7 +10,7 @@ def get(key: str) -> Tuple[str, Dict]:
         key: The pre-trained model key.
     """
 
-    return URLS.get(key), CONFIGS.get(key)
+    return URLS[key], CONFIGS[key]
 
 
 def keys() -> List[str]:
