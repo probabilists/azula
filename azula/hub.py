@@ -58,6 +58,8 @@ def download(
         filename = os.path.expanduser(filename)
         filename = os.path.abspath(filename)
 
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
     if os.path.exists(filename):
         if not quiet:
             print(f"Skipping download as {filename} already exists.", file=sys.stderr)
