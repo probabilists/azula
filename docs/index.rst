@@ -82,7 +82,7 @@ Alternatively, Azula's plugin interface allows to load pre-trained models and us
    from azula.sample import DDIMSampler
 
    # Download weights from openai/guided-diffusion
-   denoiser = adm.load_model("imagenet_256x256_uncond")
+   denoiser = adm.load_model("imagenet_256x256")
 
    # Generate a batch of 4 images
    sampler = DDIMSampler(denoiser, steps=64).cuda()

@@ -20,14 +20,15 @@ def keys() -> List[str]:
 
 
 URLS = {
-    "imagenet_64x64": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt",
-    "imagenet_256x256": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt",
-    "imagenet_256x256_uncond": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt",
+    "imagenet_64x64_cond": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt",
+    "imagenet_256x256": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt",
+    "imagenet_256x256_cond": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt",
+    "imagenet_512x512_cond": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt",
     "ffhq_256x256": "https://drive.google.com/uc?id=1BGwhRWUoguF-D8wlZ65tf227gp3cDUDh",
 }
 
 CONFIGS = {
-    "imagenet_64x64": {
+    "imagenet_64x64_cond": {
         "schedule_name": "cosine",
         "attention_resolutions": {32, 16, 8},
         "channel_mult": (1, 2, 3, 4),
@@ -44,16 +45,25 @@ CONFIGS = {
         "channel_mult": (1, 1, 2, 2, 4, 4),
         "image_size": 256,
         "num_channels": 256,
-        "num_classes": 1000,
+        "num_classes": None,
         "num_head_channels": 64,
         "num_res_blocks": 2,
     },
-    "imagenet_256x256_uncond": {
+    "imagenet_256x256_cond": {
         "attention_resolutions": {32, 16, 8},
         "channel_mult": (1, 1, 2, 2, 4, 4),
         "image_size": 256,
         "num_channels": 256,
-        "num_classes": None,
+        "num_classes": 1000,
+        "num_head_channels": 64,
+        "num_res_blocks": 2,
+    },
+    "imagenet_512x512_cond": {
+        "attention_resolutions": {32, 16, 8},
+        "channel_mult": (0.5, 1, 1, 2, 2, 4, 4),
+        "image_size": 256,
+        "num_channels": 256,
+        "num_classes": 1000,
         "num_head_channels": 64,
         "num_res_blocks": 2,
     },

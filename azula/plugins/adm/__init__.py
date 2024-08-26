@@ -8,11 +8,13 @@ repository to you machine
 
     git clone https://github.com/openai/guided-diffusion
 
-and add it to your Python path.
+and add it to your Python path before importing the plugin.
 
 .. code-block:: python
 
     import sys; sys.path.append("path/to/guided-diffusion")
+    ...
+    from azula.plugins import adm
 
 References:
     | Diffusion Models Beat GANs on Image Synthesis (Dhariwal et al., 2021)
@@ -24,7 +26,6 @@ __all__ = [
     "ImprovedDenoiser",
     "list_models",
     "load_model",
-    "make_model",
 ]
 
 import numpy as np
@@ -163,7 +164,7 @@ def list_models() -> List[str]:
     return database.keys()
 
 
-def load_model(key: str, **kwargs) -> ImprovedDenoiser:
+def load_model(key: str, **kwargs) -> GaussianDenoiser:
     r"""Loads a pre-trained ADM model.
 
     Arguments:
@@ -193,31 +194,21 @@ def make_model(
     # Schedule
     schedule_name: str = "linear",
     timesteps: int = 1000,
+    # Data
+    image_channels: int = 3,
+    image_size: int = 64,
     # Backbone
     attention_resolutions: Set[int] = {32, 16, 8},  # noqa: B006
     channel_mult: Sequence[int] = (1, 2, 3, 4),
     dropout: float = 0.0,
-    image_size: int = 64,
     num_channels: int = 128,
     num_classes: int = None,
     num_heads: int = 1,
     num_head_channels: int = 64,
     num_res_blocks: int = 3,
     **kwargs,
-) -> ImprovedDenoiser:
-    r"""Builds an ADM model.
-
-    Arguments:
-        learned_var: Whether the variance term is learned or not.
-        schedule_name: The beta schedule name.
-        timesteps: The number of schedule time steps.
-
-    The remaining arguments are for the :class:`guided_diffusion.unet.UNetModel`
-    backbone.
-
-    Returns:
-        A denoiser.
-    """
+) -> GaussianDenoiser:
+    r"""Instantiates an ADM denoiser."""
 
     kwargs.setdefault("resblock_updown", True)
     kwargs.setdefault("use_fp16", False)
@@ -229,8 +220,8 @@ def make_model(
     backbone = FlattenWrapper(
         wrappee=unet.UNetModel(
             image_size=image_size,
-            in_channels=3,
-            out_channels=6 if learned_var else 3,
+            in_channels=image_channels,
+            out_channels=2 * image_channels if learned_var else image_channels,
             model_channels=num_channels,
             channel_mult=channel_mult,
             num_classes=num_classes,
@@ -241,12 +232,12 @@ def make_model(
             dropout=dropout,
             **kwargs,
         ),
-        shape=(3, image_size, image_size),
+        shape=(image_channels, image_size, image_size),
     )
 
     schedule = BetaSchedule(name=schedule_name, steps=timesteps)
 
-    return ImprovedDenoiser(backbone=backbone, schedule=schedule)
+    return ImprovedDenoiser(backbone, schedule)
 
 
 # fmt: off
