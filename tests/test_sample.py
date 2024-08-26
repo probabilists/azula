@@ -56,12 +56,15 @@ def test_samplers(with_label: bool, batch: Sequence[int]):
     for S in Ss:
         sampler = S(denoiser)
 
-        z = torch.randn(*batch, 5)
+        x1 = sampler.init((*batch, 5))
+
+        assert x1.shape == (*batch, 5)
+        assert torch.all(torch.isfinite(x1))
 
         if with_label:
-            x = sampler(z, label="cat")
+            x0 = sampler(x1, label="cat")
         else:
-            x = sampler(z)
+            x0 = sampler(x1)
 
-        assert x.shape == z.shape
-        assert torch.all(torch.isfinite(x))
+        assert x0.shape == (*batch, 5)
+        assert torch.all(torch.isfinite(x0))

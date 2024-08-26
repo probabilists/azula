@@ -67,8 +67,8 @@ This formalism is closely followed by Azula's API.
    # Generate 64 points in 1000 steps
    sampler = DDPMSampler(denoiser.eval(), steps=1000)
 
-   x_1 = torch.randn((64, 5))
-   x_0 = sampler(x_1)
+   x1 = sampler.init((64, 5))
+   x0 = sampler(x1)
 
 Alternatively, Azula's plugin interface allows to load pre-trained models and use them with the same convenient interface.
 
@@ -82,16 +82,15 @@ Alternatively, Azula's plugin interface allows to load pre-trained models and us
    from azula.sample import DDIMSampler
 
    # Download weights from openai/guided-diffusion
-   denoiser = adm.load_model("imagenet_256x256")
+   denoiser = adm.load_model("imagenet_256x256_uncond")
 
    # Generate a batch of 4 images
    sampler = DDIMSampler(denoiser, steps=64).cuda()
 
-   latents = torch.randn((4, 3 * 256 * 256)).cuda()
-   labels = torch.randint(1000, size=(4,)).cuda()
+   x1 = sampler.init((4, 3 * 256 * 256))
+   x0 = sampler(x1)
 
-   images = sampler(latents, y=labels)
-   images = images.reshape(4, 3, 256, 256)
+   images = torch.clip((x0 + 1) / 2, min=0, max=1).reshape(4, 3, 256, 256)
 
 For more information, check out the :doc:`tutorials <../tutorials>` or the :doc:`API <../api>`.
 

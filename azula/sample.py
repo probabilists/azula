@@ -34,7 +34,7 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from typing import Optional
+from typing import Optional, Sequence
 
 # isort: split
 from .denoise import GaussianDenoiser
@@ -48,17 +48,58 @@ class Sampler(nn.Module, abc.ABC):
             :math:`t - s` is constant.
     """
 
+    denoiser: GaussianDenoiser
+
     def __init__(self, steps: int):
         super().__init__()
 
         self.register_buffer("timesteps", torch.linspace(1, 0, steps + 1))
 
     @torch.no_grad()
+    def init(
+        self,
+        shape: Sequence[int],
+        mean: Optional[Tensor] = None,
+        var: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Tensor:
+        r"""Draws an initial noisy vector :math:`x_1`.
+
+        .. math:: x_1 \sim \matcal{N}(\alpha_1 \mathbb{E}[X], \alpha_1^2 \mathbb{V}[X] + \sigma_1^2 I)
+
+        Arguments:
+            shape: The shape :math:`(*, D)` of the vector.
+            mean: The mean :math:`\mathbb{E}[X]` of :math:`p(X)`, with shape
+                :math:`()` or :math:`(*, D)`. If :py:`None`, use 0 instead.
+            var: The variance :math:`\mathbb{V}[X]` of :math:`p(X)`, with shape
+                :math:`()` or :math:`(*, D)`. If :py:`None`, use 1 instead.
+            kwargs: Keyword arguments passed to :func:`torch.randn`.
+
+        Returns:
+            A noisy vector :math:`x_1`, with shape :math:`(*, D)`.
+        """
+
+        kwargs.setdefault("dtype", self.timesteps.dtype)
+        kwargs.setdefault("device", self.timesteps.device)
+
+        alpha_1, sigma_1 = self.denoiser.schedule(self.timesteps[0])
+
+        if mean is None:
+            mean = torch.zeros_like(alpha_1)
+
+        if var is None:
+            var = torch.ones_like(sigma_1)
+
+        z = torch.randn(shape, **kwargs)
+
+        return alpha_1 * mean + torch.sqrt(alpha_1**2 * var + sigma_1**2) * z
+
+    @torch.no_grad()
     def forward(self, x_1: Tensor, **kwargs) -> Tensor:
         r"""Simulates the reverse process from :math:`t = 1` to :math:`0`.
 
         Arguments:
-            x_1: The noisy vector :math:`x_1`, with shape :math:`(*, D)`.
+            x_1: A noisy vector :math:`x_1`, with shape :math:`(*, D)`.
             kwargs: Optional keyword arguments.
 
         Returns:
