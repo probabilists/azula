@@ -17,7 +17,6 @@ def cg(
     x0: Optional[Tensor] = None,
     iterations: int = 1,
     dtype: Optional[torch.dtype] = None,
-    epsilon: float = 1e-9,
 ) -> Tensor:
     r"""Solves a linear system :math:`Ax = b` with conjugate gradient (CG) iterations.
 
@@ -39,7 +38,6 @@ def cg(
         iterations: The number of CG iterations :math:`n`.
         dtype: The data type used for intermediate computations. If :py:`None`, use
             :class:`torch.float64` instead.
-        epsilon: The machine epsilon.
 
     Returns:
         The :math:`n`-th iteration :math:`x_n`, with shape :math:`(*, D)`.
@@ -47,6 +45,8 @@ def cg(
 
     if dtype is None:
         dtype = torch.float64
+
+    epsilon = torch.finfo(dtype).smallest_normal
 
     if x0 is None:
         x = torch.zeros_like(b)
@@ -81,7 +81,6 @@ def gmres(
     x0: Optional[Tensor] = None,
     iterations: int = 1,
     dtype: Optional[torch.dtype] = None,
-    epsilon: float = 1e-9,
 ) -> Tensor:
     r"""Solves a linear system :math:`Ax = b` with generalized minimal residual (GMRES) iterations.
 
@@ -102,7 +101,6 @@ def gmres(
         iterations: The number of GMRES iterations :math:`n`.
         dtype: The data type used for intermediate computations. If :py:`None`, use
             :class:`torch.float64` instead.
-        epsilon: The machine epsilon.
 
     Returns:
         The :math:`n`-th iteration :math:`x_n`, with shape :math:`(*, D)`.
@@ -110,6 +108,8 @@ def gmres(
 
     if dtype is None:
         dtype = torch.float64
+
+    epsilon = torch.finfo(dtype).smallest_normal
 
     if x0 is None:
         r = b
