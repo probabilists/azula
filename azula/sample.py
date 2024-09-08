@@ -29,6 +29,7 @@ __all__ = [
     "DDIMSampler",
     "EulerSampler",
     "HeunSampler",
+    "PCSampler",
 ]
 
 import abc
@@ -284,5 +285,53 @@ class HeunSampler(Sampler):
         z_s = (x_s - alpha_s * q_s.mean) / sigma_s
         z_t = (z_t + z_s) / 2
         x_s = alpha_s / alpha_t * x_t + alpha_s * (sigma_s / alpha_s - sigma_t / alpha_t) * z_t
+
+        return x_s
+
+
+class PCSampler(Sampler):
+    r"""Creates a predictor-corrector (PC) sampler.
+
+    References:
+        | Score-Based Generative Modeling through Stochastic Differential Equations (Song et al., 2021)
+        | https://arxiv.org/abs/2011.13456
+
+    Arguments:
+        denoiser: A Gaussian denoiser.
+        corrections: The number of Langevin corrections per step.
+        delta: The amplitude of Langevin corrections.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(
+        self,
+        denoiser: GaussianDenoiser,
+        corrections: int = 1,
+        delta: float = 0.01,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+        self.corrections = corrections
+
+        self.register_buffer("delta", torch.as_tensor(delta))
+
+    def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
+        alpha_s, sigma_s = self.denoiser.schedule(s)
+        alpha_t, sigma_t = self.denoiser.schedule(t)
+
+        # Corrector
+        for _ in range(self.corrections):
+            q = self.denoiser(x_t, t, **kwargs)
+            x_t = (
+                x_t
+                + self.delta * (alpha_t * q.mean - x_t)
+                + torch.sqrt(2 * self.delta) * sigma_t * torch.randn_like(x_t)
+            )
+
+        # Predictor
+        q = self.denoiser(x_t, t, **kwargs)
+        x_s = alpha_s * q.mean + sigma_s / sigma_t * (x_t - alpha_t * q.mean)
 
         return x_s
