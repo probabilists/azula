@@ -34,7 +34,7 @@ from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
 from azula.plugins.utils import RaiseMock
 from torch import Tensor
-from typing import List, Sequence, Set, Tuple
+from typing import List, Tuple
 
 try:
     from diffusion.models import get_model  # type: ignore
@@ -123,7 +123,7 @@ def make_model(
     # Backbone
     key: str = "imagenet_128",
 ) -> GaussianDenoiser:
-    r"""Instantiates a VDM denoiser."""
+    r"""Initializes a VDM denoiser."""
 
     backbone = FlattenWrapper(
         wrappee=get_model(key)(),

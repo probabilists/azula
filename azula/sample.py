@@ -27,6 +27,8 @@ __all__ = [
     "Sampler",
     "DDPMSampler",
     "DDIMSampler",
+    "EulerSampler",
+    "HeunSampler",
 ]
 
 import abc
@@ -193,36 +195,94 @@ class DDIMSampler(Sampler):
         denoiser: A Gaussian denoiser.
         eta: The stochasticity hyperparameter :math:`\eta \in \mathbb{R}_+`.
             If :math:`\eta = 1`, :class:`DDIMSampler` is equivalent to :class:`DDPMSampler`.
-            If :py:`eta is None`, :math:`\eta = 0` and the sampler is deterministic.
+            If :math:`\eta = 0`, :class:`DDIMSampler` is equivalent to :class:`EulerSampler`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, eta: Optional[float] = None, **kwargs):
+    def __init__(self, denoiser: GaussianDenoiser, eta: float = 0.0, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
 
-        if eta is None:
-            self.register_buffer("eta", None)
-        else:
-            self.register_buffer("eta", torch.as_tensor(eta))
+        self.register_buffer("eta", torch.as_tensor(eta))
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)
         alpha_t, sigma_t = self.denoiser.schedule(t)
 
-        if self.eta is None:
-            tau = torch.zeros((), dtype=t.dtype, device=t.device)
-            eps = torch.zeros((), dtype=x_t.dtype, device=x_t.device)
-        else:
-            tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
-            tau = torch.clip(self.eta * tau, min=0, max=1)
-            eps = torch.randn_like(x_t)
+        tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
+        tau = torch.clip(self.eta * tau, min=0, max=1)
+        eps = torch.randn_like(x_t)
 
         q = self.denoiser(x_t, t, **kwargs)
 
         x_s = alpha_s * q.mean
         x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q.mean)
         x_s = x_s + sigma_s * torch.sqrt(tau) * eps
+
+        return x_s
+
+
+class EulerSampler(Sampler):
+    r"""Creates a deterministic Euler (1st order) sampler.
+
+    The integration is carried with respect to the noise-to-signal ratio
+    :math:`\frac{\sigma_t}{\alpha_t}` rather than the time :math:`t`.
+
+    Wikipedia:
+        https://wikipedia.org/wiki/Euler_method
+
+    Arguments:
+        denoiser: A Gaussian denoiser.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: GaussianDenoiser, **kwargs):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+
+    def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
+        alpha_s, sigma_s = self.denoiser.schedule(s)
+        alpha_t, sigma_t = self.denoiser.schedule(t)
+
+        q_t = self.denoiser(x_t, t, **kwargs)
+        z_t = (x_t - alpha_t * q_t.mean) / sigma_t
+        x_s = alpha_s / alpha_t * x_t + alpha_s * (sigma_s / alpha_s - sigma_t / alpha_t) * z_t
+
+        return x_s
+
+
+class HeunSampler(Sampler):
+    r"""Creates a deterministic Heun (2nd order) sampler.
+
+    The integration is carried with respect to the noise-to-signal ratio
+    :math:`\frac{\sigma_t}{\alpha_t}` rather than the time :math:`t`.
+
+    Wikipedia:
+        https://wikipedia.org/wiki/Heun%27s_method
+
+    Arguments:
+        denoiser: A Gaussian denoiser.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: GaussianDenoiser, **kwargs):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+
+    def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
+        alpha_s, sigma_s = self.denoiser.schedule(s)
+        alpha_t, sigma_t = self.denoiser.schedule(t)
+
+        q_t = self.denoiser(x_t, t, **kwargs)
+        z_t = (x_t - alpha_t * q_t.mean) / sigma_t
+        x_s = alpha_s / alpha_t * x_t + alpha_s * (sigma_s / alpha_s - sigma_t / alpha_t) * z_t
+
+        q_s = self.denoiser(x_s, s, **kwargs)
+        z_s = (x_s - alpha_s * q_s.mean) / sigma_s
+        z_t = (z_t + z_s) / 2
+        x_s = alpha_s / alpha_t * x_t + alpha_s * (sigma_s / alpha_s - sigma_t / alpha_t) * z_t
 
         return x_s

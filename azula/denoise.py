@@ -143,7 +143,7 @@ class PreconditionedDenoiser(GaussianDenoiser):
         | https://arxiv.org/abs/2206.00364
 
     Arguments:
-        backbone: A noise conditional network :math:`b_\phi(x, \log \sigma)`.
+        backbone: A noise conditional network :math:`b_\phi(x_t, \sigma_t)`.
         schedule: A noise schedule.
     """
 

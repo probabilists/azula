@@ -133,6 +133,8 @@ class ImprovedDenoiser(GaussianDenoiser):
         alpha_t, sigma_t = self.schedule.kernel(t)
         alpha_s, sigma_s = self.schedule.kernel(t - 1)
 
+        kwargs.setdefault("y", kwargs.pop("label", None))
+
         output = self.backbone(x_t, t, **kwargs)
 
         if output.shape == x_t.shape:
@@ -208,7 +210,7 @@ def make_model(
     num_res_blocks: int = 3,
     **kwargs,
 ) -> GaussianDenoiser:
-    r"""Instantiates an ADM denoiser."""
+    r"""Initializes an ADM denoiser."""
 
     kwargs.setdefault("resblock_updown", True)
     kwargs.setdefault("use_fp16", False)
