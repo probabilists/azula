@@ -1,7 +1,7 @@
 r"""Elucidated latent diffusion model (ELDM or EDM2) plugin.
 
 This plugin depends on the `torch_utils` and `training` modules in the `NVlabs/edm2
-<https://github.com/NVlabs/edm2>`_ repository. To use it, clone the repository to you
+<https://github.com/NVlabs/edm2>`_ repository. To use it, clone the repository to your
 machine
 
 .. code-block:: console

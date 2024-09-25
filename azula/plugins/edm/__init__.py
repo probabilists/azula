@@ -1,7 +1,7 @@
 r"""Elucidated diffusion model (EDM) plugin.
 
 This plugin depends on the `torch_utils` and `training` modules in the `NVlabs/edm
-<https://github.com/NVlabs/edm>`_ repository. To use it, clone the repository to you
+<https://github.com/NVlabs/edm>`_ repository. To use it, clone the repository to your
 machine
 
 .. code-block:: console

@@ -2,7 +2,7 @@ r"""Ablated diffusion model (ADM) plugin.
 
 This plugin depends on the `guided_diffusion` module in the `openai/guided-diffusion
 <https://github.com/openai/guided-diffusion>`_ repository. To use it, clone the
-repository to you machine
+repository to your machine
 
 .. code-block:: console
 

@@ -2,7 +2,7 @@ r"""Velocity diffusion model (VDM) plugin.
 
 This plugin depends on the `diffusion` module in the `crowsonkb/v-diffusion-pytorch
 <https://github.com/crowsonkb/v-diffusion-pytorch>`_ repository. To use it, clone the
-repository to you machine
+repository to your machine
 
 .. code-block:: console
 
