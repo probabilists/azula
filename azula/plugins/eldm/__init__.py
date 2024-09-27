@@ -43,9 +43,14 @@ from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import VESchedule
-from diffusers.models import AutoencoderKL
+from azula.plugins.utils import RaiseMock
 from torch import Tensor
 from typing import List, Optional, Tuple
+
+try:
+    from diffusers.models import AutoencoderKL  # type: ignore
+except ImportError as e:
+    AutoencoderKL = RaiseMock(name="diffusers.models.AutoencoderKL", error=e)
 
 # isort: split
 from . import database
@@ -63,7 +68,7 @@ class AutoEncoder(nn.Module):
 
     def __init__(
         self,
-        vae: AutoencoderKL,
+        vae: nn.Module,  # AutoencoderKL
         shift: Tensor,
         scale: Tensor,
     ):
