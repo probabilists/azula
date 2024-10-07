@@ -29,21 +29,22 @@ __all__ = [
     "DDIMSampler",
     "EulerSampler",
     "HeunSampler",
+    "LMSSampler",
     "PCSampler",
 ]
 
-import abc
 import torch
 import torch.nn as nn
 
 from torch import Tensor
 from typing import Optional, Sequence
+from zuko.utils import gauss_legendre
 
 # isort: split
 from .denoise import GaussianDenoiser
 
 
-class Sampler(nn.Module, abc.ABC):
+class Sampler(nn.Module):
     r"""Abstract reverse diffusion sampler.
 
     Arguments:
@@ -119,7 +120,6 @@ class Sampler(nn.Module, abc.ABC):
 
         return x_0
 
-    @abc.abstractmethod
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         r"""Simulates the reverse process from :math:`t` to :math:`s \leq t`.
 
@@ -133,7 +133,7 @@ class Sampler(nn.Module, abc.ABC):
             The new vector :math:`x_s \sim q(X_s \mid x_t)`, with shape :math:`(*, D)`.
         """
 
-        pass
+        raise NotImplementedError()
 
 
 class DDPMSampler(Sampler):
@@ -287,6 +287,89 @@ class HeunSampler(Sampler):
         x_s = alpha_s / alpha_t * x_t + alpha_s * (sigma_s / alpha_s - sigma_t / alpha_t) * z_t
 
         return x_s
+
+
+class LMSSampler(Sampler):
+    r"""Creates a linear multi-step (LMS) sampler.
+
+    References:
+        | k-diffusion (Katherine Crowson)
+        | https://github.com/crowsonkb/k-diffusion
+
+    Arguments:
+        denoiser: A Gaussian denoiser.
+        order: The order of the multi-step method.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: GaussianDenoiser, order: int = 3, **kwargs):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+        self.order = order
+
+    @staticmethod
+    def adams_bashforth(t: Tensor, i: int, order: int = 3) -> Tensor:
+        r"""Returns the coefficients of the :math:`N`-th order Adams-Bashforth method.
+
+        Wikipedia:
+            https://wikipedia.org/wiki/Linear_multistep_method
+
+        Arguments:
+            t: The integration variable, with shape :math:`(T)`.
+            i: The integration step.
+            order: The method order :math:`N`.
+
+        Returns:
+            The Adams-Bashforth coefficients, with shape :math:`(N)`.
+        """
+
+        ti = t[i]
+        tj = t[i - order : i]
+        tk = torch.cat((tj, tj)).unfold(0, order, 1)[:order, 1:]
+
+        tj_tk = tj[..., None] - tk
+
+        # Lagrange basis
+        def lj(t):
+            return torch.prod((t[..., None, None] - tk) / tj_tk, dim=-1)
+
+        # Adams-Bashforth coefficients
+        cj = gauss_legendre(lj, tj[-1], ti, n=order // 2 + 1)
+
+        return cj
+
+    @torch.no_grad()
+    def forward(self, x_1: Tensor, **kwargs) -> Tensor:
+        alpha, sigma = self.denoiser.schedule(self.timesteps)
+        ratio = sigma.squeeze().double() / alpha.squeeze().double()
+
+        x_t = x_1
+
+        derivatives = []
+
+        for i, t in enumerate(self.timesteps[:-1]):
+            alpha_t, sigma_t = alpha[i], sigma[i]
+            alpha_s = alpha[i + 1]
+
+            q_t = self.denoiser(x_t, t, **kwargs)
+            z_t = (x_t - alpha_t * q_t.mean) / sigma_t
+
+            derivatives.append(z_t)
+
+            if len(derivatives) > self.order:
+                derivatives.pop(0)
+
+            coefficients = self.adams_bashforth(ratio, i + 1, order=len(derivatives))
+            coefficients = coefficients.to(x_t)
+
+            delta = sum(c * d for c, d in zip(coefficients, derivatives))
+
+            x_t = alpha_s * (x_t / alpha_t + delta)
+
+        x_0 = x_t
+
+        return x_0
 
 
 class PCSampler(Sampler):

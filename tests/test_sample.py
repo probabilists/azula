@@ -7,7 +7,7 @@ import torch.nn as nn
 from azula.denoise import PreconditionedDenoiser
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
-from azula.sample import DDIMSampler, DDPMSampler, EulerSampler, HeunSampler
+from azula.sample import DDIMSampler, DDPMSampler, EulerSampler, HeunSampler, LMSSampler, PCSampler
 from functools import partial
 from torch import Tensor
 from typing import Any, Sequence
@@ -53,6 +53,8 @@ def test_samplers(with_label: bool, batch: Sequence[int]):
         partial(DDIMSampler, steps=64, eta=1.0),
         partial(EulerSampler, steps=64),
         partial(HeunSampler, steps=64),
+        partial(LMSSampler, steps=64, order=3),
+        partial(PCSampler, steps=64, corrections=1),
     ]
 
     for S in Ss:
