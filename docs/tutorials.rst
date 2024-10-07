@@ -7,3 +7,4 @@ Tutorials
 
     tutorials/cifar10
     tutorials/guidance
+    tutorials/latent
