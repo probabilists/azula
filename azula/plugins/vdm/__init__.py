@@ -46,12 +46,12 @@ from . import database
 
 
 class AngularSchedule(Schedule):
-    r"""Creates an angular schedule."""
+    r"""Creates an angular noise schedule."""
 
     def __init__(self):
         super().__init__()
 
-        self.register_buffer("pi", torch.as_tensor(math.pi))
+        self.register_buffer("pi", torch.as_tensor(math.pi - 1e-6))
 
     def alpha(self, t: Tensor) -> Tensor:
         return torch.cos(self.pi / 2 * t)
