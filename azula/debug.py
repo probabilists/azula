@@ -1,4 +1,8 @@
-r"""Utilities for plugins."""
+r"""Utilities for debugging."""
+
+__all__ = [
+    "RaiseMock",
+]
 
 from unittest.mock import Mock
 

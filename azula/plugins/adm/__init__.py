@@ -32,11 +32,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
-from azula.plugins.utils import RaiseMock
 from torch import LongTensor, Tensor
 from typing import List, Sequence, Set, Tuple
 

@@ -7,6 +7,7 @@ API
    :toctree: api
    :recursive:
 
+   azula.debug
    azula.denoise
    azula.guidance
    azula.hub

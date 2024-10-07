@@ -39,11 +39,11 @@ import pickle
 import torch
 import torch.nn as nn
 
+from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import VESchedule
-from azula.plugins.utils import RaiseMock
 from torch import Tensor
 from typing import List, Optional, Tuple
 
