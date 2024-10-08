@@ -18,7 +18,7 @@ and add it to your Python path before importing the plugin.
 """
 
 __all__ = [
-    "AngularSchedule",
+    "CrowsonSchedule",
     "VelocityDenoiser",
     "list_models",
     "load_model",
@@ -37,30 +37,35 @@ from torch import Tensor
 from typing import List, Tuple
 
 try:
-    from diffusion.models import get_model  # type: ignore
+    import diffusion as crowson  # type: ignore
 except ImportError as e:
-    get_model = RaiseMock(name="diffusion.models.get_model", error=e)
+    crowson = RaiseMock(name="diffusion", error=e)
 
 # isort: split
 from . import database
 
 
-class AngularSchedule(Schedule):
+class CrowsonSchedule(Schedule):
     r"""Creates an angular noise schedule."""
 
-    def __init__(self):
+    def __init__(self, spliced: bool = False):
         super().__init__()
 
-        self.register_buffer("pi", torch.as_tensor(math.pi - 1e-6))
+        self.spliced = spliced
 
-    def alpha(self, t: Tensor) -> Tensor:
-        return torch.cos(self.pi / 2 * t)
+    def translate(self, t: Tensor) -> Tensor:
+        if self.spliced:
+            return crowson.utils.get_spliced_ddpm_cosine_schedule(t)
+        else:
+            return crowson.utils.get_ddpm_schedule(t)
 
-    def sigma(self, t: Tensor) -> Tensor:
-        return torch.sin(self.pi / 2 * t)
+    def _forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+        alpha_t, sigma_t = crowson.utils.t_to_alpha_sigma(t)
+
+        return alpha_t.unsqueeze(-1), sigma_t.unsqueeze(-1)
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
-        return self.alpha(t).unsqueeze(-1), self.sigma(t).unsqueeze(-1)
+        return self._forward(self.translate(t))
 
 
 class VelocityDenoiser(GaussianDenoiser):
@@ -71,14 +76,15 @@ class VelocityDenoiser(GaussianDenoiser):
         schedule: A noise schedule.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: Schedule):
+    def __init__(self, backbone: nn.Module, schedule: CrowsonSchedule):
         super().__init__()
 
         self.backbone = backbone
         self.schedule = schedule
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
-        alpha_t, sigma_t = self.schedule(t)
+        t = self.schedule.translate(t)
+        alpha_t, sigma_t = self.schedule._forward(t)
 
         mean = alpha_t * x_t - sigma_t * self.backbone(x_t, t, **kwargs)
         var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
@@ -125,11 +131,12 @@ def make_model(
 ) -> GaussianDenoiser:
     r"""Initializes a VDM denoiser."""
 
+    model = crowson.models.get_model(key)()
     backbone = FlattenWrapper(
-        wrappee=get_model(key)(),
+        wrappee=model,
         shape=(image_channels, image_size, image_size),
     )
 
-    schedule = AngularSchedule()
+    schedule = CrowsonSchedule(spliced=model.min_t == 0)
 
     return VelocityDenoiser(backbone, schedule)
