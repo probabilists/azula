@@ -62,7 +62,7 @@ def download(
 
     if os.path.exists(filename):
         if not quiet:
-            print(f"Skipping download as {filename} already exists.", file=sys.stderr)
+            print(f"Loading from {filename}", file=sys.stderr)
     else:
         if not quiet:
             print(f"Downloading {url} to {filename}", file=sys.stderr)
