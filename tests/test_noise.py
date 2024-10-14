@@ -3,8 +3,9 @@ r"""Tests for the azula.noise module."""
 import pytest
 import torch
 
-from azula.noise import VESchedule, VPSchedule
 from typing import Sequence
+
+from azula.noise import VESchedule, VPSchedule
 
 
 @pytest.mark.parametrize("batch", [(), (64,)])

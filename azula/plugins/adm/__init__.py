@@ -32,20 +32,20 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from torch import LongTensor, Tensor
+from typing import List, Sequence, Set, Tuple
+
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
-from torch import LongTensor, Tensor
-from typing import List, Sequence, Set, Tuple
 
 try:
     from guided_diffusion import unet  # type: ignore
 except ImportError as e:
     unet = RaiseMock(name="guided_diffusion.unet", error=e)
 
-# isort: split
 from . import database
 
 

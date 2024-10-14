@@ -4,12 +4,13 @@ import pytest
 import torch
 import torch.nn as nn
 
-from azula.denoise import Gaussian, PreconditionedDenoiser
-from azula.nn.embedding import SineEncoding
-from azula.noise import VPSchedule
 from torch import Tensor
 from torch.distributions import Normal
 from typing import Any, Sequence
+
+from azula.denoise import Gaussian, PreconditionedDenoiser
+from azula.nn.embedding import SineEncoding
+from azula.noise import VPSchedule
 
 
 class Dummy(nn.Module):

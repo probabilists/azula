@@ -33,14 +33,14 @@ import re
 import torch
 import torch.nn as nn
 
+from torch import Tensor
+from typing import List, Optional
+
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import VESchedule
-from torch import Tensor
-from typing import List, Optional
 
-# isort: split
 from . import database
 
 

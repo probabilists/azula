@@ -14,7 +14,6 @@ import torch
 from torch import Tensor
 from typing import Callable
 
-# isort: split
 from ..denoise import GaussianDenoiser
 from ..sample import Sampler
 

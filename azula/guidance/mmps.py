@@ -15,7 +15,6 @@ from functools import partial
 from torch import Tensor
 from typing import Callable
 
-# isort: split
 from ..denoise import Gaussian, GaussianDenoiser
 from ..linalg.solve import cg, gmres
 from ..noise import Schedule

@@ -1,12 +1,13 @@
 # Configuration file for the Sphinx documentation builder
 
-import azula
 import glob
 import importlib
 import inspect
 import pathlib
 import re
 import subprocess
+
+import azula
 
 ## Project
 

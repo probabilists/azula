@@ -39,20 +39,20 @@ import pickle
 import torch
 import torch.nn as nn
 
+from torch import Tensor
+from typing import List, Optional, Tuple
+
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import VESchedule
-from torch import Tensor
-from typing import List, Optional, Tuple
 
 try:
     from diffusers.models import AutoencoderKL  # type: ignore
 except ImportError as e:
     AutoencoderKL = RaiseMock(name="diffusers.models.AutoencoderKL", error=e)
 
-# isort: split
 from . import database
 from ..edm import ElucidatedSchedule
 

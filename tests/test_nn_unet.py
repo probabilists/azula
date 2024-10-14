@@ -3,9 +3,10 @@ r"""Tests for the azula.nn.unet module."""
 import pytest
 import torch
 
-from azula.nn.unet import UNet
 from pathlib import Path
 from typing import Dict
+
+from azula.nn.unet import UNet
 
 
 @pytest.mark.parametrize("length", [15, 16])

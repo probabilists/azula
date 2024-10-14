@@ -3,9 +3,10 @@ r"""Tests for the azula.linalg.solve module."""
 import pytest
 import torch
 
-from azula.linalg.solve import cg, gmres
 from functools import partial
 from typing import Sequence
+
+from azula.linalg.solve import cg, gmres
 
 
 @pytest.fixture(autouse=True, scope="module")

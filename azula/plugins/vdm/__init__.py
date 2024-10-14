@@ -28,20 +28,20 @@ import math
 import torch
 import torch.nn as nn
 
+from torch import Tensor
+from typing import List, Tuple
+
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
-from torch import Tensor
-from typing import List, Tuple
 
 try:
     import diffusion as crowson  # type: ignore
 except ImportError as e:
     crowson = RaiseMock(name="diffusion", error=e)
 
-# isort: split
 from . import database
 
 

@@ -40,7 +40,6 @@ from torch import Tensor
 from typing import Optional, Sequence
 from zuko.utils import gauss_legendre
 
-# isort: split
 from .denoise import GaussianDenoiser
 
 

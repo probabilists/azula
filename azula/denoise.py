@@ -34,7 +34,6 @@ import torch.nn as nn
 from dataclasses import dataclass
 from torch import Tensor
 
-# isort: split
 from .noise import Schedule
 
 
