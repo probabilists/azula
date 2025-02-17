@@ -38,7 +38,6 @@ from typing import List, Sequence, Set, Tuple
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
-from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
 
 try:
@@ -100,13 +99,13 @@ class BetaSchedule(Schedule):
         alpha_t = self.alpha[t]
         sigma_t = self.sigma[t]
 
-        return alpha_t.unsqueeze(-1), sigma_t.unsqueeze(-1)
+        return alpha_t, sigma_t
 
     def kernel(self, t: LongTensor) -> Tuple[Tensor, Tensor]:
         alpha_t = torch.where(t < 0, 1, self.alpha[t])
         sigma_t = torch.where(t < 0, 0, self.sigma[t])
 
-        return alpha_t.unsqueeze(-1), sigma_t.unsqueeze(-1)
+        return alpha_t, sigma_t
 
 
 class ImprovedDenoiser(GaussianDenoiser):
@@ -130,23 +129,26 @@ class ImprovedDenoiser(GaussianDenoiser):
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         t = self.schedule.discrete(t)
 
-        alpha_t, sigma_t = self.schedule.kernel(t)
-        alpha_s, sigma_s = self.schedule.kernel(t - 1)
-
         kwargs.setdefault("y", kwargs.pop("label", None))
 
-        output = self.backbone(x_t, t, **kwargs)
+        output = self.backbone(x_t, t.reshape(-1), **kwargs)
+
+        while t.ndim < x_t.ndim:
+            t = t[..., None]
+
+        alpha_t, sigma_t = self.schedule.kernel(t)
+        alpha_s, sigma_s = self.schedule.kernel(t - 1)
 
         if output.shape == x_t.shape:
             eps = output
             mean = (x_t - sigma_t * eps) / alpha_t
             var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
         else:
-            eps, var = torch.chunk(output, 2, dim=-1)
+            eps, var = torch.chunk(output, 2, dim=1)
             mean = (x_t - sigma_t * eps) / alpha_t
 
-            log_beta = self.schedule.log_beta[t].unsqueeze(-1)
-            log_beta_tilde = self.schedule.log_beta_tilde[t].unsqueeze(-1)
+            log_beta = self.schedule.log_beta[t]
+            log_beta_tilde = self.schedule.log_beta_tilde[t]
 
             frac = (var + 1) / 2
             var_s_t = torch.exp(frac * (log_beta - log_beta_tilde) + log_beta_tilde)
@@ -184,7 +186,7 @@ def load_model(key: str, **kwargs) -> GaussianDenoiser:
     state = torch.load(download(url), **kwargs)
 
     denoiser = make_model(**config)
-    denoiser.backbone.wrappee.load_state_dict(state)
+    denoiser.backbone.load_state_dict(state)
     denoiser.eval()
 
     return denoiser
@@ -219,22 +221,19 @@ def make_model(
 
     attention_resolutions = {image_size // r for r in attention_resolutions}
 
-    backbone = FlattenWrapper(
-        wrappee=unet.UNetModel(
-            image_size=image_size,
-            in_channels=image_channels,
-            out_channels=2 * image_channels if learned_var else image_channels,
-            model_channels=num_channels,
-            channel_mult=channel_mult,
-            num_classes=num_classes,
-            num_res_blocks=num_res_blocks,
-            attention_resolutions=attention_resolutions,
-            num_heads=num_heads,
-            num_head_channels=num_head_channels,
-            dropout=dropout,
-            **kwargs,
-        ),
-        shape=(image_channels, image_size, image_size),
+    backbone = unet.UNetModel(
+        image_size=image_size,
+        in_channels=image_channels,
+        out_channels=2 * image_channels if learned_var else image_channels,
+        model_channels=num_channels,
+        channel_mult=channel_mult,
+        num_classes=num_classes,
+        num_res_blocks=num_res_blocks,
+        attention_resolutions=attention_resolutions,
+        num_heads=num_heads,
+        num_head_channels=num_head_channels,
+        dropout=dropout,
+        **kwargs,
     )
 
     schedule = BetaSchedule(name=schedule_name, steps=timesteps)

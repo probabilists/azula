@@ -41,33 +41,35 @@ class Dummy(nn.Module):
 
 @pytest.mark.parametrize("isotropic", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
-def test_Gaussian(isotropic: bool, batch: Sequence[int]):
-    mean = torch.randn(*batch, 5)
+@pytest.mark.parametrize("channels", [5])
+def test_Gaussian(isotropic: bool, batch: Sequence[int], channels: int):
+    mean = torch.randn(*batch, channels)
 
     if isotropic:
         std = torch.rand(*batch, 1) + 1e-3
     else:
-        std = torch.rand(*batch, 5) + 1e-3
+        std = torch.rand(*batch, channels) + 1e-3
 
     x = torch.normal(mean, std)
 
     log_q = Gaussian(mean, std**2).log_prob(x)
-    log_p = Normal(mean, std).log_prob(x).sum(dim=-1)
+    log_p = Normal(mean, std).log_prob(x)
 
-    assert log_q.shape == batch
+    assert log_q.shape == (*batch, channels)
     assert torch.allclose(log_q, log_p, atol=1e-6)
 
 
 @pytest.mark.parametrize("with_label", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
-def test_PreconditionedDenoiser(with_label: bool, batch: Sequence[int]):
+@pytest.mark.parametrize("channels", [5])
+def test_PreconditionedDenoiser(with_label: bool, batch: Sequence[int], channels: int):
     denoiser = PreconditionedDenoiser(
-        backbone=Dummy(5, with_label),
+        backbone=Dummy(channels, with_label),
         schedule=VPSchedule(),
     )
 
     # Forward
-    x = torch.randn(*batch, 5)
+    x = torch.randn(*batch, channels)
     t = torch.rand(batch)
 
     if with_label:
@@ -85,7 +87,7 @@ def test_PreconditionedDenoiser(with_label: bool, batch: Sequence[int]):
     else:
         loss = denoiser.loss(x, t)
 
-    assert loss.shape == batch
+    assert loss.shape == x.shape
     assert loss.requires_grad
 
     loss.mean().backward()

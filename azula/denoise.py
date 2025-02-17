@@ -39,14 +39,11 @@ from .noise import Schedule
 
 @dataclass
 class Gaussian:
-    r"""Creates a Gaussian distribution :math:`\mathcal{N}(\mu, \Sigma)`.
-
-    Only diagonal covariances :math:`\Sigma = \operatorname{diag}(\sigma^2)` are
-    currently supported.
+    r"""Creates a Gaussian distribution :math:`\mathcal{N}(\mu, \sigma^2)`.
 
     Arguments:
-        mean: The mean :math:`\mu`, with shape :math:`(*, D)`.
-        var: The variance :math:`\sigma^2`, with shape :math:`(*, D)`.
+        mean: The mean :math:`\mu`, with shape :math:`(*)`.
+        var: The variance :math:`\sigma^2`, with shape :math:`(*)`.
     """
 
     mean: Tensor
@@ -55,19 +52,14 @@ class Gaussian:
     def log_prob(self, x: Tensor) -> Tensor:
         r"""
         Arguments:
-            x: A vector :math:`x`, with shape :math:`(*, D)`.
+            x: A tensor :math:`x`, with shape :math:`(*, S)`.
 
         Returns:
-            The log-density :math:`\log \mathcal{N}(x \mid \mu, \Sigma)`, with shape
-            :math:`(*)`.
+            The log-density :math:`\log \mathcal{N}(x \mid \mu, \sigma^2)`, with shape
+            :math:`(*, S)`.
         """
 
-        log_p = (
-            -((x - self.mean) ** 2 / self.var + torch.log(self.var) + math.log(2 * math.pi)) / 2
-        )
-        log_p = torch.sum(log_p, dim=-1)
-
-        return log_p
+        return -((x - self.mean) ** 2 / self.var + torch.log(self.var) + math.log(2 * math.pi)) / 2
 
 
 class GaussianDenoiser(nn.Module):
@@ -85,7 +77,7 @@ class GaussianDenoiser(nn.Module):
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         r"""
         Arguments:
-            x_t: A noisy vector :math:`x_t`, with shape :math:`(*, D)`.
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(*, S)`.
             t: The time :math:`t`, with shape :math:`(*)`.
             kwargs: Optional keyword arguments.
 
@@ -98,7 +90,7 @@ class GaussianDenoiser(nn.Module):
     def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
         r"""
         Arguments:
-            x: A clean vector :math:`x`, with shape :math:`(*, D)`.
+            x: A clean tensor :math:`x`, with shape :math:`(*, S)`.
             t: The time :math:`t`, with shape :math:`(*)`.
             kwargs: Optional keyword arguments.
 
@@ -107,10 +99,13 @@ class GaussianDenoiser(nn.Module):
 
             .. math:: -\log \mathcal{N}(x \mid \mu_\phi(x_t), \Sigma_\phi(x_t))
 
-            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(*)`.
+            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(*, S)`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
+
+        while alpha_t.ndim < x.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
         z = torch.randn_like(x)
         x_t = alpha_t * x + sigma_t * z
@@ -155,10 +150,13 @@ class PreconditionedDenoiser(GaussianDenoiser):
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)
 
+        while alpha_t.ndim < x_t.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
+
         c_in = 1 / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_out = sigma_t / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_skip = alpha_t / (alpha_t**2 + sigma_t**2)
-        c_noise = torch.log(sigma_t / alpha_t).squeeze(dim=-1)
+        c_noise = torch.log(sigma_t / alpha_t).reshape_as(t)
 
         mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_noise, **kwargs)
         var = sigma_t**2 / (alpha_t**2 + sigma_t**2)

@@ -22,8 +22,8 @@ def test_schedules(batch: Sequence[int]):
         t = torch.rand(batch)
         alpha_t, sigma_t = schedule(t)
 
-        assert alpha_t.shape == (*batch, 1), S
-        assert sigma_t.shape == (*batch, 1), S
+        assert alpha_t.shape == batch, S
+        assert sigma_t.shape == batch, S
 
         assert torch.all(alpha_t > 0), S
         assert torch.all(sigma_t > 0), S

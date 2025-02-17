@@ -38,10 +38,10 @@ HASHES = {
 }
 
 CONFIGS = {
-    "danbooru_128x128": {"key": "danbooru_128", "image_size": 128},
-    "imagenet_128x128": {"key": "imagenet_128", "image_size": 128},
-    "wikiart_128x128": {"key": "wikiart_128", "image_size": 128},
-    "wikiart_256x256": {"key": "wikiart_256", "image_size": 256},
-    "yfcc_512x512": {"key": "yfcc_1", "image_size": 512},
-    "yfcc_512x512_large": {"key": "yfcc_2", "image_size": 512},
+    "danbooru_128x128": {"key": "danbooru_128"},
+    "imagenet_128x128": {"key": "imagenet_128"},
+    "wikiart_128x128": {"key": "wikiart_128"},
+    "wikiart_256x256": {"key": "wikiart_256"},
+    "yfcc_512x512": {"key": "yfcc_1"},
+    "yfcc_512x512_large": {"key": "yfcc_2"},
 }

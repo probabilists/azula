@@ -38,7 +38,6 @@ from typing import List, Optional
 
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
-from azula.nn.utils import FlattenWrapper
 from azula.noise import VESchedule
 
 from . import database
@@ -90,11 +89,16 @@ class ElucidatedDenoiser(GaussianDenoiser):
             self.schedule = schedule
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
-        _, sigma_t = self.schedule(t)  # alpha_t = 1
+        alpha_t, sigma_t = self.schedule(t)
+        sigma_t, x_t = sigma_t / alpha_t, x_t / alpha_t
 
-        kwargs.setdefault("class_labels", kwargs.get("label", None))
+        kwargs.setdefault("class_labels", kwargs.pop("label", None))
 
-        mean = self.backbone(x_t, sigma_t.squeeze(-1), **kwargs)
+        mean = self.backbone(x_t, sigma_t, **kwargs)
+
+        while sigma_t.ndim < x_t.ndim:
+            sigma_t = sigma_t[..., None]
+
         var = sigma_t**2 / (1 + sigma_t**2)
 
         return Gaussian(mean=mean, var=var)
@@ -122,14 +126,9 @@ def load_model(key: str) -> GaussianDenoiser:
         content = pickle.load(f)
 
     denoiser = content["ema"]
+    denoiser = ElucidatedDenoiser(
+        backbone=denoiser,
+    )
     denoiser.eval()
 
-    image_size = re.search(r"(\d+)x(\d+)", key).groups()
-    image_size = map(int, image_size)
-
-    return ElucidatedDenoiser(
-        backbone=FlattenWrapper(
-            wrappee=denoiser,
-            shape=(3, *image_size),
-        ),
-    )
+    return denoiser

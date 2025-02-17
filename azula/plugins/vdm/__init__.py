@@ -24,7 +24,6 @@ __all__ = [
     "load_model",
 ]
 
-import math
 import torch
 import torch.nn as nn
 
@@ -34,7 +33,6 @@ from typing import List, Tuple
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
-from azula.nn.utils import FlattenWrapper
 from azula.noise import Schedule
 
 try:
@@ -60,10 +58,7 @@ class CrowsonSchedule(Schedule):
             return crowson.utils.get_ddpm_schedule(t)
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
-        t = self.backbone_time(t)
-        alpha_t, sigma_t = crowson.utils.t_to_alpha_sigma(t)
-
-        return alpha_t.unsqueeze(-1), sigma_t.unsqueeze(-1)
+        return crowson.utils.t_to_alpha_sigma(self.backbone_time(t))
 
 
 class VelocityDenoiser(GaussianDenoiser):
@@ -82,9 +77,13 @@ class VelocityDenoiser(GaussianDenoiser):
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)
-        t = self.schedule.backbone_time(t)
 
-        mean = alpha_t * x_t - sigma_t * self.backbone(x_t, t, **kwargs)
+        while alpha_t.ndim < x_t.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
+
+        mean = alpha_t * x_t - sigma_t * self.backbone(
+            x_t, self.schedule.backbone_time(t), **kwargs
+        )
         var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         return Gaussian(mean=mean, var=var)
@@ -114,27 +113,18 @@ def load_model(key: str, **kwargs) -> GaussianDenoiser:
     state = torch.load(download(url, hash_prefix=hash_prefix), **kwargs)
 
     denoiser = make_model(**config)
-    denoiser.backbone.wrappee.load_state_dict(state)
+    denoiser.backbone.load_state_dict(state)
     denoiser.eval()
 
     return denoiser
 
 
 def make_model(
-    # Data
-    image_channels: int = 3,
-    image_size: int = 128,
-    # Backbone
     key: str = "imagenet_128",
 ) -> GaussianDenoiser:
     r"""Initializes a VDM denoiser."""
 
-    model = crowson.models.get_model(key)()
-    backbone = FlattenWrapper(
-        wrappee=model,
-        shape=(image_channels, image_size, image_size),
-    )
-
-    schedule = CrowsonSchedule(spliced=model.min_t == 0)
+    backbone = crowson.models.get_model(key)()
+    schedule = CrowsonSchedule(spliced=backbone.min_t == 0)
 
     return VelocityDenoiser(backbone, schedule)

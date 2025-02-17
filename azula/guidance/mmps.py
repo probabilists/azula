@@ -25,7 +25,7 @@ class MMPSDenoiser(GaussianDenoiser):
 
     Arguments:
         denoiser: A Gaussian denoiser.
-        y: An observation :math:`y \sim \mathcal{N}(Ax, \Sigma_y)`.
+        y: An observation :math:`y \sim \mathcal{N}(Ax, \Sigma_y)`, with shape :math:`(*, D)`.
         A: The forward operator :math:`x \mapsto Ax`.
         var_y: The noise variance :math:`\Sigma_y`.
         tweedie_covariance: Whether to use the Tweedie covariance formula or not.

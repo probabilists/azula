@@ -45,7 +45,6 @@ from typing import List, Optional, Tuple
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
-from azula.nn.utils import FlattenWrapper
 from azula.noise import VESchedule
 
 try:
@@ -152,7 +151,7 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
     ) -> Gaussian:
         r"""
         Arguments:
-            x_t: A noisy vector :math:`x_t`, with shape :math:`(*, D)`.
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(*, S)`.
             t: The time :math:`t`, with shape :math:`(*)`.
             label: The class label :math:`c` as a one-hot vector.
             omega: The classifier-free guidance strength :math:`\omega \in \mathbb{R}`.
@@ -163,16 +162,20 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
             The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t \mid c), \Sigma_\phi(x_t \mid c))`.
         """
 
-        _, sigma_t = self.schedule(t)  # alpha_t = 1
+        alpha_t, sigma_t = self.schedule(t)
+        sigma_t, x_t = sigma_t / alpha_t, x_t / alpha_t
 
         if label is None:
-            mean = self.backbone(x_t, sigma_t.squeeze(-1), **kwargs)
+            mean = self.backbone(x_t, sigma_t, **kwargs)
         elif omega is None:
-            mean = self.backbone(x_t, sigma_t.squeeze(-1), class_labels=label, **kwargs)
+            mean = self.backbone(x_t, sigma_t, class_labels=label, **kwargs)
         else:
-            mean = self.backbone(x_t, sigma_t.squeeze(-1), **kwargs)
-            mean_cond = self.backbone(x_t, sigma_t.squeeze(-1), class_labels=label, **kwargs)
+            mean = self.backbone(x_t, sigma_t, **kwargs)
+            mean_cond = self.backbone(x_t, sigma_t, class_labels=label, **kwargs)
             mean = mean + omega * (mean_cond - mean)
+
+        while sigma_t.ndim < x_t.ndim:
+            sigma_t = sigma_t[..., None]
 
         var = sigma_t**2 / (1 + sigma_t**2)
 
@@ -202,10 +205,7 @@ def load_model(key: str) -> Tuple[GaussianDenoiser, AutoEncoder]:
 
     denoiser = content["ema"]
     denoiser = ElucidatedLatentDenoiser(
-        backbone=FlattenWrapper(
-            wrappee=denoiser,
-            shape=(4, 64, 64),
-        ),
+        backbone=denoiser,
     )
     denoiser.eval()
 

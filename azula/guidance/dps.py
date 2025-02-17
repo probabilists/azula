@@ -64,7 +64,7 @@ class DPSSampler(Sampler):
         # DPS
         with torch.enable_grad():
             error = self.y - self.A(q.mean)
-            norm = torch.linalg.vector_norm(error, dim=-1).sum()
+            norm = torch.linalg.vector_norm(error)
 
         grad = torch.autograd.grad(norm, x_t)[0]
 

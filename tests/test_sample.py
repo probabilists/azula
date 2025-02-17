@@ -42,9 +42,10 @@ class Dummy(nn.Module):
 
 @pytest.mark.parametrize("with_label", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
-def test_samplers(with_label: bool, batch: Sequence[int]):
+@pytest.mark.parametrize("channels", [5])
+def test_samplers(with_label: bool, batch: Sequence[int], channels: int):
     denoiser = PreconditionedDenoiser(
-        backbone=Dummy(5, with_label),
+        backbone=Dummy(channels, with_label),
         schedule=VPSchedule(),
     )
 
@@ -61,9 +62,9 @@ def test_samplers(with_label: bool, batch: Sequence[int]):
     for S in Ss:
         sampler = S(denoiser)
 
-        x1 = sampler.init((*batch, 5))
+        x1 = sampler.init((*batch, channels))
 
-        assert x1.shape == (*batch, 5)
+        assert x1.shape == (*batch, channels)
         assert torch.all(torch.isfinite(x1))
 
         if with_label:
@@ -71,5 +72,5 @@ def test_samplers(with_label: bool, batch: Sequence[int]):
         else:
             x0 = sampler(x1)
 
-        assert x0.shape == (*batch, 5)
+        assert x0.shape == (*batch, channels)
         assert torch.all(torch.isfinite(x0))

@@ -19,7 +19,7 @@ is if
 .. math:: p(X_{t_{i-1}}) \approx
     \int q(X_{t_{i-1}} \mid x_{t_i}) \, p(x_{t_i}) \, \operatorname{d}\!x_{t_i} \, ,
 
-for all :math:`i = 1, \dots, T`, the vectors :math:`x_{t_i}` are distributed according
+for all :math:`i = 1, \dots, T`, the tensors :math:`x_{t_i}` are distributed according
 to :math:`p(X_{t_i})`, including the last one :math:`x_{t_0} = x_0`.
 """
 
@@ -66,20 +66,20 @@ class Sampler(nn.Module):
         var: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
-        r"""Draws an initial noisy vector :math:`x_1`.
+        r"""Draws an initial noisy tensor :math:`x_1`.
 
         .. math:: x_1 \sim \mathcal{N}(\alpha_1 \mathbb{E}[X], \alpha_1^2 \mathbb{V}[X] + \sigma_1^2 I)
 
         Arguments:
-            shape: The shape :math:`(*, D)` of the vector.
+            shape: The shape :math:`(*)` of the tensor.
             mean: The mean :math:`\mathbb{E}[X]` of :math:`p(X)`, with shape
-                :math:`()` or :math:`(*, D)`. If :py:`None`, use 0 instead.
+                :math:`()` or :math:`(*)`. If :py:`None`, use 0 instead.
             var: The variance :math:`\mathbb{V}[X]` of :math:`p(X)`, with shape
-                :math:`()` or :math:`(*, D)`. If :py:`None`, use 1 instead.
+                :math:`()` or :math:`(*)`. If :py:`None`, use 1 instead.
             kwargs: Keyword arguments passed to :func:`torch.randn`.
 
         Returns:
-            A noisy vector :math:`x_1`, with shape :math:`(*, D)`.
+            A noisy tensor :math:`x_1`, with shape :math:`(*)`.
         """
 
         kwargs.setdefault("dtype", self.timesteps.dtype)
@@ -102,11 +102,11 @@ class Sampler(nn.Module):
         r"""Simulates the reverse process from :math:`t = 1` to :math:`0`.
 
         Arguments:
-            x_1: A noisy vector :math:`x_1`, with shape :math:`(*, D)`.
+            x_1: A noisy tensor :math:`x_1`, with shape :math:`(*, D)`.
             kwargs: Optional keyword arguments.
 
         Returns:
-            The clean vector :math:`x_0`, with shape :math:`(*, D)`.
+            The clean tensor :math:`x_0`, with shape :math:`(*, D)`.
         """
 
         x_t = x_1
@@ -123,13 +123,13 @@ class Sampler(nn.Module):
         r"""Simulates the reverse process from :math:`t` to :math:`s \leq t`.
 
         Arguments:
-            x_t: The current vector :math:`x_t`, with shape :math:`(*, D)`.
+            x_t: The current tensor :math:`x_t`, with shape :math:`(*, D)`.
             t: The current time :math:`t`, with shape :math:`(*)`.
             s: The target time :math:`s`, with shape :math:`(*)`.
             kwargs: Optional keyword arguments.
 
         Returns:
-            The new vector :math:`x_s \sim q(X_s \mid x_t)`, with shape :math:`(*, D)`.
+            The new tensor :math:`x_s \sim q(X_s \mid x_t)`, with shape :math:`(*, D)`.
         """
 
         raise NotImplementedError()
@@ -341,7 +341,7 @@ class LMSSampler(Sampler):
     @torch.no_grad()
     def forward(self, x_1: Tensor, **kwargs) -> Tensor:
         alpha, sigma = self.denoiser.schedule(self.timesteps)
-        ratio = sigma.squeeze().double() / alpha.squeeze().double()
+        ratio = sigma.double() / alpha.double()
 
         x_t = x_1
 
