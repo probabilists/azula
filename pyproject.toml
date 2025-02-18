@@ -46,7 +46,7 @@ line-length = 99
 
 [tool.ruff.lint]
 extend-select = ["B", "I", "W"]
-ignore = ["E731"]
+ignore = ["E731", "E741"]
 preview = true
 
 [tool.ruff.lint.extend-per-file-ignores]

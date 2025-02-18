@@ -11,7 +11,7 @@ from azula.nn.unet import UNet
 
 @pytest.mark.parametrize("length", [15, 16])
 @pytest.mark.parametrize("in_channels, out_channels", [(3, 5)])
-@pytest.mark.parametrize("mod_features", [16])
+@pytest.mark.parametrize("mod_features", [0, 16])
 @pytest.mark.parametrize("attention_heads", [{}, {2: 1}])
 @pytest.mark.parametrize("dropout", [None, 0.1])
 @pytest.mark.parametrize("spatial", [1, 2])
