@@ -87,7 +87,7 @@ def test_PreconditionedDenoiser(with_label: bool, batch: Sequence[int], channels
     else:
         loss = denoiser.loss(x, t)
 
-    assert loss.shape == x.shape
+    assert loss.shape == ()
     assert loss.requires_grad
 
     loss.mean().backward()

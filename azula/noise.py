@@ -34,6 +34,8 @@ __all__ = [
     "Schedule",
     "VESchedule",
     "VPSchedule",
+    "CosineSchedule",
+    "RectifiedSchedule",
 ]
 
 import abc
@@ -80,17 +82,17 @@ class VESchedule(Schedule):
         sigma_max: The final noise scale :math:`\sigma_\max \in \mathbb{R}_+`.
     """
 
-    def __init__(self, sigma_min: float = 1e-3, sigma_max: float = 1e2):
+    def __init__(self, sigma_min: float = 1e-3, sigma_max: float = 1e3):
         super().__init__()
 
-        self.register_buffer("log_sigma_min", torch.log(torch.as_tensor(sigma_min)))
-        self.register_buffer("log_sigma_max", torch.log(torch.as_tensor(sigma_max)))
+        self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
+        self.register_buffer("sigma_max", torch.as_tensor(sigma_max))
 
     def alpha(self, t: Tensor) -> Tensor:
         return torch.ones_like(t)
 
     def sigma(self, t: Tensor) -> Tensor:
-        return torch.exp(torch.lerp(self.log_sigma_min, self.log_sigma_max, t))
+        return torch.lerp(self.sigma_min.log(), self.sigma_max.log(), t).exp()
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
@@ -100,8 +102,8 @@ class VPSchedule(Schedule):
     r"""Creates a variance preserving (VP) noise schedule.
 
     .. math::
-        \alpha_t & = \exp(t^2 \log \alpha_\min) \\
-        \sigma_t & = \sqrt{ 1 - \alpha_t^2 + \sigma_\min^2 }
+        \alpha_t & = \exp \big( t^2 \log \alpha_\min \big) \\
+        \sigma_t & = \sqrt{ 1 - \alpha_t^2 + \sigma_\min^2}
 
     References:
         | Denoising Diffusion Probabilistic Models (Ho et al. 2020)
@@ -111,8 +113,8 @@ class VPSchedule(Schedule):
         | https://arxiv.org/abs/2011.13456
 
     Arguments:
-        alpha_min: The final signal scale :math:`\alpha_\min \in [0, 1]`.
-        sigma_min: The initial noise scale :math:`\sigma_\min \in [0, 1]`.
+        alpha_min: The final signal scale :math:`\alpha_\min \in ]0,1[`.
+        sigma_min: The initial noise scale :math:`\sigma_\min \in ]0,1[`.
     """
 
     def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
@@ -122,10 +124,73 @@ class VPSchedule(Schedule):
         self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
 
     def alpha(self, t: Tensor) -> Tensor:
-        return torch.exp(torch.log(self.alpha_min) * t**2)
+        return torch.exp(self.alpha_min.log() * t**2)
 
     def sigma(self, t: Tensor) -> Tensor:
         return torch.sqrt(1 - self.alpha(t) ** 2 + self.sigma_min**2)
+
+    def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+        return self.alpha(t), self.sigma(t)
+
+
+class CosineSchedule(Schedule):
+    r"""Creates a cosine noise schedule.
+
+    .. math::
+        \alpha_t & = \cos \big( t \arccos \alpha_\min \big) \\
+        \sigma_t & = \sqrt{ 1 - \alpha_t^2 + \sigma_\min^2}
+
+    Arguments:
+        alpha_min: The final signal scale :math:`\alpha_\min \in ]0,1[`.
+        sigma_min: The initial noise scale :math:`\sigma_\min \in ]0,1[`.
+    """
+
+    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
+        super().__init__()
+
+        self.register_buffer("alpha_min", torch.as_tensor(alpha_min))
+        self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
+
+    def alpha(self, t: Tensor) -> Tensor:
+        return torch.cos(self.alpha_min.arccos() * t)
+
+    def sigma(self, t: Tensor) -> Tensor:
+        return torch.sqrt(1 - self.alpha(t) ** 2 + self.sigma_min**2)
+
+    def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+        return self.alpha(t), self.sigma(t)
+
+
+class RectifiedSchedule(Schedule):
+    r"""Creates a rectified noise schedule.
+
+    .. math::
+        \alpha_t & = t \alpha_\min + (1 - t) \\
+        \sigma_t & = t + (1 - t) \sigma_\min
+
+    References:
+        | Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow (Liu et al. 2022)
+        | https://arxiv.org/abs/2209.03003
+
+        | Flow Matching for Generative Modeling (Lipman et al. 2023)
+        | https://arxiv.org/abs/2210.02747
+
+    Arguments:
+        alpha_min: The final signal scale :math:`\alpha_\min \in ]0,1[`.
+        sigma_min: The initial noise scale :math:`\sigma_\min \in ]0,1[`.
+    """
+
+    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
+        super().__init__()
+
+        self.register_buffer("alpha_min", torch.as_tensor(alpha_min))
+        self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
+
+    def alpha(self, t: Tensor) -> Tensor:
+        return t * self.alpha_min + (1 - t)
+
+    def sigma(self, t: Tensor) -> Tensor:
+        return t + (1 - t) * self.sigma_min
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)

@@ -34,39 +34,46 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
-from azula.noise import VESchedule
+from azula.noise import Schedule
 
 from . import database
 
 
-class ElucidatedSchedule(VESchedule):
+class ElucidatedSchedule(Schedule):
     r"""Creates an elucidated noise schedule.
 
     .. math::
         \alpha_t & = 1 \\
-        \sigma_t & = \left( (1 - t) \, {\sigma_\min}^\frac{1}{\gamma}
-            + t \, {\sigma_\max}^\frac{1}{\gamma} \right)^\gamma
+        \sigma_t & = \left( (1 - t) \, {\sigma_\min}^\frac{1}{\rho}
+            + t \, {\sigma_\max}^\frac{1}{\rho} \right)^\rho
 
     Arguments:
         sigma_min: The initial noise scale :math:`\sigma_\min \in \mathbb{R}_+`.
         sigma_max: The final noise scale :math:`\sigma_\max \in \mathbb{R}_+`.
-        gamma: A hyper-parameter :math:`\gamma \in \mathbb{R}_+`, denoted :math:`\rho` originally.
+        rho: A hyper-parameter :math:`\rho \in \mathbb{R}_+`.
     """
 
-    def __init__(self, sigma_min: float = 0.002, sigma_max: float = 80.0, gamma: float = 7.0):
-        super().__init__(sigma_min, sigma_max)
+    def __init__(self, sigma_min: float = 0.002, sigma_max: float = 80.0, rho: float = 7.0):
+        super().__init__()
 
-        self.register_buffer("gamma", torch.as_tensor(gamma))
+        self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
+        self.register_buffer("sigma_max", torch.as_tensor(sigma_max))
+        self.register_buffer("rho", torch.as_tensor(rho))
+
+    def alpha(self, t: Tensor) -> Tensor:
+        return torch.ones_like(t)
 
     def sigma(self, t: Tensor) -> Tensor:
-        lower = torch.exp(self.log_sigma_min / self.gamma)
-        upper = torch.exp(self.log_sigma_max / self.gamma)
+        lower = self.sigma_min ** (1 / self.rho)
+        upper = self.sigma_max ** (1 / self.rho)
+        return torch.lerp(lower, upper, t) ** self.rho
 
-        return torch.lerp(lower, upper, t) ** self.gamma
+    def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+        return self.alpha(t), self.sigma(t)
 
 
 class ElucidatedDenoiser(GaussianDenoiser):
@@ -74,11 +81,10 @@ class ElucidatedDenoiser(GaussianDenoiser):
 
     Arguments:
         backbone: A noise conditional network.
-        schedule: A variance exploding (VE) schedule. If :py:`None`, use
-            :class:`ElucidatedSchedule` instead.
+        schedule: A noise schedule. If :py:`None`, use :class:`ElucidatedSchedule` instead.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: Optional[VESchedule] = None):
+    def __init__(self, backbone: nn.Module, schedule: Optional[Schedule] = None):
         super().__init__()
 
         self.backbone = backbone

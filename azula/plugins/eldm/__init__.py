@@ -45,7 +45,7 @@ from typing import List, Optional, Tuple
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
-from azula.noise import VESchedule
+from azula.noise import Schedule
 
 try:
     from diffusers.models import AutoencoderKL  # type: ignore
@@ -123,14 +123,14 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
 
     Arguments:
         backbone: A noise conditional network :math:`b_\phi(x_t, \sigma_t \mid c)`.
-        schedule: A variance exploding (VE) schedule. If :py:`None`, use
+        schedule: A noise schedule. If :py:`None`, use
             :class:`azula.plugins.edm.ElucidatedSchedule` instead.
     """
 
     def __init__(
         self,
         backbone: nn.Module,
-        schedule: Optional[VESchedule] = None,
+        schedule: Optional[Schedule] = None,
     ):
         super().__init__()
 

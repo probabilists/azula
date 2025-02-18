@@ -87,33 +87,6 @@ class GaussianDenoiser(nn.Module):
 
         pass
 
-    def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
-        r"""
-        Arguments:
-            x: A clean tensor :math:`x`, with shape :math:`(*, S)`.
-            t: The time :math:`t`, with shape :math:`(*)`.
-            kwargs: Optional keyword arguments.
-
-        Returns:
-            The negative log-likelihood
-
-            .. math:: -\log \mathcal{N}(x \mid \mu_\phi(x_t), \Sigma_\phi(x_t))
-
-            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(*, S)`.
-        """
-
-        alpha_t, sigma_t = self.schedule(t)
-
-        while alpha_t.ndim < x.ndim:
-            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
-
-        z = torch.randn_like(x)
-        x_t = alpha_t * x + sigma_t * z
-
-        q = self(x_t, t, **kwargs)
-
-        return -q.log_prob(x)
-
 
 class PreconditionedDenoiser(GaussianDenoiser):
     r"""Creates a Gaussian denoiser with EDM-style preconditioning.
@@ -153,8 +126,8 @@ class PreconditionedDenoiser(GaussianDenoiser):
         while alpha_t.ndim < x_t.ndim:
             alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
-        c_in = 1 / torch.sqrt(alpha_t**2 + sigma_t**2)
-        c_out = sigma_t / torch.sqrt(alpha_t**2 + sigma_t**2)
+        c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_out = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_skip = alpha_t / (alpha_t**2 + sigma_t**2)
         c_noise = torch.log(sigma_t / alpha_t).reshape_as(t)
 
@@ -162,3 +135,30 @@ class PreconditionedDenoiser(GaussianDenoiser):
         var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         return Gaussian(mean=mean, var=var)
+
+    def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
+        r"""
+        Arguments:
+            x: A clean tensor :math:`x`, with shape :math:`(*, S)`.
+            t: The time :math:`t`, with shape :math:`(*)`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            The weighted loss
+
+            .. math:: \frac{1}{\sigma^2_\phi(x_t)} || \mu_\phi(x_t) - x ||^2
+
+            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(*, S)`.
+        """
+
+        alpha_t, sigma_t = self.schedule(t)
+
+        while alpha_t.ndim < x.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
+
+        z = torch.randn_like(x)
+        x_t = alpha_t * x + sigma_t * z
+
+        q = self(x_t, t, **kwargs)
+
+        return ((q.mean - x).square() / q.var.detach()).mean()
