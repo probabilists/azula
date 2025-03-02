@@ -33,8 +33,7 @@ jobs:
           python-version: ${{ matrix.version.python }}
       - name: Install dependencies
         run: |
-          pip install pytest
           pip install torch==${{ matrix.version.torch }} torchvision --extra-index-url https://download.pytorch.org/whl/cpu
-          pip install .
+          pip install .[test]
       - name: Run tests
         run: pytest tests

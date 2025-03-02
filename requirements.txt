@@ -1,6 +1,0 @@
-einops>=0.7.0
-gdown>=5.1.0
-numpy>=1.20.0
-torch>=1.13.0
-torchvision>=0.14.0
-zuko>=1.0.0
