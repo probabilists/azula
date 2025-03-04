@@ -7,7 +7,7 @@ For a distribution :math:`p(X)` over :math:`\mathbb{R}^D`, the perturbation kern
 
 defines a series of marginal distributions
 
-.. math:: p(X_t) = \int p(X_t \mid x) \, p(x) \operatorname{d}\!x \, .
+.. math:: p(X_t) = \int p(X_t \mid x) \, p(x) \, dx \, .
 
 The goal of diffusion models is to generate samples from :math:`p(X_0)`. To this end,
 reverse transition kernels :math:`q(X_s \mid X_t)` from :math:`t` to :math:`s < t` are
@@ -17,7 +17,7 @@ chosen. Then, starting from :math:`x_1 \sim p(X_1)`, :math:`T` transitions
 is if
 
 .. math:: p(X_{t_{i-1}}) \approx
-    \int q(X_{t_{i-1}} \mid x_{t_i}) \, p(x_{t_i}) \, \operatorname{d}\!x_{t_i} \, ,
+    \int q(X_{t_{i-1}} \mid x_{t_i}) \, p(x_{t_i}) \, dx_{t_i} \, ,
 
 for all :math:`i = 1, \dots, T`, the tensors :math:`x_{t_i}` are distributed according
 to :math:`p(X_{t_i})`, including the last one :math:`x_{t_0} = x_0`.
@@ -29,7 +29,8 @@ __all__ = [
     "DDIMSampler",
     "EulerSampler",
     "HeunSampler",
-    "LMSSampler",
+    "ABSampler",
+    "EABSampler",
     "PCSampler",
 ]
 
@@ -38,7 +39,6 @@ import torch.nn as nn
 
 from torch import Tensor
 from typing import Optional, Sequence
-from zuko.utils import gauss_legendre
 
 from .denoise import GaussianDenoiser
 
@@ -167,10 +167,10 @@ class DDPMSampler(Sampler):
         tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
         eps = torch.randn_like(x_t)
 
-        q = self.denoiser(x_t, t, **kwargs)
+        q_t = self.denoiser(x_t, t, **kwargs)
 
-        x_s = alpha_s * q.mean
-        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q.mean)
+        x_s = alpha_s * q_t.mean
+        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q_t.mean)
         x_s = x_s + sigma_s * torch.sqrt(tau) * eps
 
         return x_s
@@ -214,20 +214,27 @@ class DDIMSampler(Sampler):
         tau = torch.clip(self.eta * tau, min=0, max=1)
         eps = torch.randn_like(x_t)
 
-        q = self.denoiser(x_t, t, **kwargs)
+        q_t = self.denoiser(x_t, t, **kwargs)
 
-        x_s = alpha_s * q.mean
-        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q.mean)
+        x_s = alpha_s * q_t.mean
+        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q_t.mean)
         x_s = x_s + sigma_s * torch.sqrt(tau) * eps
 
         return x_s
 
 
 class EulerSampler(Sampler):
-    r"""Creates a deterministic Euler (1st order) sampler.
+    r"""Creates a explicit Euler (1st order) sampler.
 
-    The integration is carried with respect to the noise-to-signal ratio
-    :math:`\frac{\sigma_t}{\alpha_t}` rather than the time :math:`t`.
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    t` such that
+
+    .. math:: x_s = x_t + \int_t^s z(x_u) \, du
+
+    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{t}`. The explicit Euler
+    step for this integral is
+
+    .. math:: x_s \gets x_t + (s - t) \, z(x_t)
 
     Wikipedia:
         https://wikipedia.org/wiki/Euler_method
@@ -254,10 +261,19 @@ class EulerSampler(Sampler):
 
 
 class HeunSampler(Sampler):
-    r"""Creates a deterministic Heun (2nd order) sampler.
+    r"""Creates a explicit Heun (2nd order) sampler.
 
-    The integration is carried with respect to the noise-to-signal ratio
-    :math:`\frac{\sigma_t}{\alpha_t}` rather than the time :math:`t`.
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    t` such that
+
+    .. math:: x_s = x_t + \int_t^s z(x_u) \, du
+
+    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{t}`. The explicit Heun
+    step for this integral is
+
+    .. math::
+        x_s & \gets x_t + (s - t) \, z(x_t) \\
+        x_s & \gets x_t + (s - t) \frac{z(x_t) + z(x_s)}{2}
 
     Wikipedia:
         https://wikipedia.org/wiki/Heun%27s_method
@@ -288,16 +304,37 @@ class HeunSampler(Sampler):
         return x_s
 
 
-class LMSSampler(Sampler):
-    r"""Creates a linear multi-step (LMS) sampler.
+class ABSampler(Sampler):
+    r"""Creates an Adams-Bashforth (AB) multi-step sampler.
 
-    References:
-        | k-diffusion (Katherine Crowson)
-        | https://github.com/crowsonkb/k-diffusion
+    Note:
+        This sampler is equivalent to the linear multi-step (LMS) sampler from Katherine
+        Crowson's `k-diffusion <https://github.com/crowsonkb/k-diffusion>`_.
+
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    t` such that
+
+    .. math:: x_s = x_t + \int_t^s z(x_u) \, du
+
+    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{t}`. The :math:`n`-th
+    order Adams-Bashforth step for this integral is
+
+    .. math:: x_s \gets x_t + \sum_{i=0}^{n-1} z(x_{t_i}) \int_t^s \ell_i(u) \, du
+
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(t)` form
+    their Lagrange basis.
+
+    .. math:: \ell_i(t_j) = \sum_{k=0}^{n-1} a_{ik} \, t_j^k = \delta_{ij}
+
+    Therefore, the Adams-Bashforth coefficients are
+
+    .. math:: \int_t^s \ell_i(u) \, du
+        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s u^k \, du \\
+        & = \sum_{k=0}^{n-1} a_{ik} \left[ \frac{u^{k+1}}{k+1} \right]_t^s
 
     Arguments:
         denoiser: A Gaussian denoiser.
-        order: The order of the multi-step method.
+        order: The order :math:`n` of the multi-step method.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
@@ -308,44 +345,37 @@ class LMSSampler(Sampler):
         self.order = order
 
     @staticmethod
-    def adams_bashforth(t: Tensor, i: int, order: int = 3) -> Tensor:
-        r"""Returns the coefficients of the :math:`N`-th order Adams-Bashforth method.
-
-        Wikipedia:
-            https://wikipedia.org/wiki/Linear_multistep_method
+    def adams_bashforth(t: Tensor, n: int = 3) -> Tensor:
+        r"""Returns the coefficients of the :math:`n`-th order Adams-Bashforth method.
 
         Arguments:
-            t: The integration variable, with shape :math:`(T)`.
-            i: The integration step.
-            order: The method order :math:`N`.
+            t: The integration variable, with shape :math:`(m + 1)`.
+            n: The method order :math:`n \leq m`.
 
         Returns:
-            The Adams-Bashforth coefficients, with shape :math:`(N)`.
+            The coefficients, with shape :math:`(n)`.
         """
 
-        ti = t[i]
-        tj = t[i - order : i]
-        tk = torch.cat((tj, tj)).unfold(0, order, 1)[:order, 1:]
+        m = len(t) - 1
+        n = min(n, m)
+        k = torch.arange(n, dtype=torch.float64, device=t.device)
 
-        tj_tk = tj[..., None] - tk
+        # Vandermonde matrix t_i^k
+        V = t[m - n : m] ** k[:, None]
 
-        # Lagrange basis
-        def lj(t):
-            return torch.prod((t[..., None, None] - tk) / tj_tk, dim=-1)
+        # Integral of u^k from t_{m-1} to t_m
+        b = t[m] ** (k + 1) / (k + 1) - t[m - 1] ** (k + 1) / (k + 1)
 
-        # Adams-Bashforth coefficients
-        cj = gauss_legendre(lj, tj[-1], ti, n=order // 2 + 1)
-
-        return cj
+        return torch.linalg.solve(V, b).to(dtype=t.dtype)
 
     @torch.no_grad()
     def forward(self, x_1: Tensor, **kwargs) -> Tensor:
         alpha, sigma = self.denoiser.schedule(self.timesteps)
-        ratio = sigma.double() / alpha.double()
+        rho = sigma / alpha
 
         x_t = x_1
 
-        derivatives = []
+        buffer = []
 
         for i, t in enumerate(self.timesteps[:-1]):
             alpha_t, sigma_t = alpha[i], sigma[i]
@@ -354,17 +384,123 @@ class LMSSampler(Sampler):
             q_t = self.denoiser(x_t, t, **kwargs)
             z_t = (x_t - alpha_t * q_t.mean) / sigma_t
 
-            derivatives.append(z_t)
+            buffer.append(z_t)
+            if len(buffer) > self.order:
+                buffer.pop(0)
 
-            if len(derivatives) > self.order:
-                derivatives.pop(0)
+            coeffs = self.adams_bashforth(rho[: i + 2], n=self.order)
+            integral = sum(b * c for b, c in zip(buffer, coeffs))
 
-            coefficients = self.adams_bashforth(ratio, i + 1, order=len(derivatives))
-            coefficients = coefficients.to(x_t)
+            x_t = alpha_s / alpha_t * x_t + alpha_s * integral
 
-            delta = sum(c * d for c, d in zip(coefficients, derivatives))
+        x_0 = x_t
 
-            x_t = alpha_s * (x_t / alpha_t + delta)
+        return x_0
+
+
+class EABSampler(Sampler):
+    r"""Creates an exponential Adams-Bashforth (EAB) multi-step sampler.
+
+    Note:
+        This sampler is a multi-step generalization of the DPM-Solver sampler from Cheng
+        Lu's `dpm-solver <https://github.com/LuChengTHU/dpm-solver>`_.
+
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    e^t` such that
+
+    .. math:: x_s = x_t + \int_t^s e^u \, z(x_u) \, du
+
+    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{e^t}`. The :math:`n`-th
+    order exponential Adams-Bashforth step for this integral is
+
+    .. math:: x_s \gets x_t + \sum_{i=0}^{n-1} z(x_{t_i}) \int_t^s e^u \, \ell_i(u) \, du
+
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(t)` form
+    their Lagrange basis.
+
+    .. math:: \ell_i(t_j) = \sum_{k=0}^{n-1} a_{ik} \, t_j^k = \delta_{ij}
+
+    Therefore, the exponential Adams-Bashforth coefficients are
+
+    .. math:: \int_t^s e^u \, \ell_i(u) \, du
+        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s e^u \, u^k \, du \\
+        & = \sum_{k=0}^{n-1} a_{ik} \left[ (-1)^k \, k! \, e^u \sum_{j=0}^k \frac{(-u)^j}{j!} \right]_t^s
+
+    References:
+        | Exponential Adams Bashforth ODE solver for stiff problems (Coudière et al., 2018)
+        | https://arxiv.org/abs/1804.09927
+
+        | DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps (Lu et al., 2022)
+        | https://arxiv.org/abs/2206.00927
+
+    Arguments:
+        denoiser: A Gaussian denoiser.
+        order: The order :math:`n` of the multi-step method.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: GaussianDenoiser, order: int = 3, **kwargs):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+        self.order = order
+
+    @staticmethod
+    def exponential_adams_bashforth(t: Tensor, n: int = 3) -> Tensor:
+        r"""Returns the coefficients of the :math:`n`-th order exponential Adams-Bashforth method.
+
+        Arguments:
+            t: The integration variable, with shape :math:`(m + 1)`.
+            n: The method order :math:`n \leq m`.
+
+        Returns:
+            The coefficients, with shape :math:`(n)`.
+        """
+
+        m = len(t) - 1
+        n = min(n, m)
+        k = torch.arange(n, dtype=torch.float64, device=t.device)
+        k_fact = torch.lgamma(k + 1).exp()
+
+        # Vandermonde matrix t_i^k
+        V = t[m - n : m] ** k[:, None]
+
+        # Integral of exp(u) u^k from t_{m-1} to t_m
+        b = (
+            (-1) ** k
+            * k_fact
+            * (
+                torch.exp(t[m]) * torch.cumsum((-t[m]) ** k / k_fact, dim=0)
+                - torch.exp(t[m - 1]) * torch.cumsum((-t[m - 1]) ** k / k_fact, dim=0)
+            )
+        )
+
+        return torch.linalg.solve(V, b).to(dtype=t.dtype)
+
+    @torch.no_grad()
+    def forward(self, x_1: Tensor, **kwargs) -> Tensor:
+        alpha, sigma = self.denoiser.schedule(self.timesteps)
+        log_rho = sigma.log() - alpha.log()
+
+        x_t = x_1
+
+        buffer = []
+
+        for i, t in enumerate(self.timesteps[:-1]):
+            alpha_t, sigma_t = alpha[i], sigma[i]
+            alpha_s = alpha[i + 1]
+
+            q_t = self.denoiser(x_t, t, **kwargs)
+            z_t = (x_t - alpha_t * q_t.mean) / sigma_t
+
+            buffer.append(z_t)
+            if len(buffer) > self.order:
+                buffer.pop(0)
+
+            coeffs = self.exponential_adams_bashforth(log_rho[: i + 2], n=self.order)
+            integral = sum(b * c for b, c in zip(buffer, coeffs))
+
+            x_t = alpha_s / alpha_t * x_t + alpha_s * integral
 
         x_0 = x_t
 
@@ -405,15 +541,15 @@ class PCSampler(Sampler):
 
         # Corrector
         for _ in range(self.corrections):
-            q = self.denoiser(x_t, t, **kwargs)
+            q_t = self.denoiser(x_t, t, **kwargs)
             x_t = (
                 x_t
-                + self.delta * (alpha_t * q.mean - x_t)
+                + self.delta * (alpha_t * q_t.mean - x_t)
                 + torch.sqrt(2 * self.delta) * sigma_t * torch.randn_like(x_t)
             )
 
         # Predictor
-        q = self.denoiser(x_t, t, **kwargs)
-        x_s = alpha_s * q.mean + sigma_s / sigma_t * (x_t - alpha_t * q.mean)
+        q_t = self.denoiser(x_t, t, **kwargs)
+        x_s = alpha_s * q_t.mean + sigma_s / sigma_t * (x_t - alpha_t * q_t.mean)
 
         return x_s

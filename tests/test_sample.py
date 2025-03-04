@@ -11,7 +11,15 @@ from typing import Any, Sequence
 from azula.denoise import PreconditionedDenoiser
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
-from azula.sample import DDIMSampler, DDPMSampler, EulerSampler, HeunSampler, LMSSampler, PCSampler
+from azula.sample import (
+    ABSampler,
+    DDIMSampler,
+    DDPMSampler,
+    EABSampler,
+    EulerSampler,
+    HeunSampler,
+    PCSampler,
+)
 
 
 class Dummy(nn.Module):
@@ -55,7 +63,8 @@ def test_samplers(with_label: bool, batch: Sequence[int], channels: int):
         partial(DDIMSampler, steps=64, eta=1.0),
         partial(EulerSampler, steps=64),
         partial(HeunSampler, steps=64),
-        partial(LMSSampler, steps=64, order=3),
+        partial(ABSampler, steps=64, order=3),
+        partial(EABSampler, steps=64, order=3),
         partial(PCSampler, steps=64, corrections=1),
     ]
 
@@ -64,13 +73,13 @@ def test_samplers(with_label: bool, batch: Sequence[int], channels: int):
 
         x1 = sampler.init((*batch, channels))
 
-        assert x1.shape == (*batch, channels)
-        assert torch.all(torch.isfinite(x1))
+        assert x1.shape == (*batch, channels), S
+        assert torch.all(torch.isfinite(x1)), S
 
         if with_label:
             x0 = sampler(x1, label="cat")
         else:
             x0 = sampler(x1)
 
-        assert x0.shape == (*batch, channels)
-        assert torch.all(torch.isfinite(x0))
+        assert x0.shape == (*batch, channels), S
+        assert torch.all(torch.isfinite(x0)), S
