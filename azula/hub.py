@@ -1,8 +1,8 @@
 r"""Utilities for downloading models."""
 
 __all__ = [
-    "get_dir",
-    "set_dir",
+    "get_hub_dir",
+    "set_hub_dir",
     "download",
 ]
 
@@ -18,13 +18,13 @@ from typing import Optional
 AZULA_HUB: str = os.path.expanduser("~/.cache/azula/hub")
 
 
-def get_dir() -> str:
+def get_hub_dir() -> str:
     r"""Returns the cache directory used for storing models & weights."""
 
     return AZULA_HUB
 
 
-def set_dir(cache_dir: str):
+def set_hub_dir(cache_dir: str):
     r"""Sets the cache directory used for storing models & weights."""
 
     global AZULA_HUB
@@ -53,7 +53,7 @@ def download(
 
     if filename is None:
         filename = re.sub("[ /\\\\|?%*:'\"<>]+", ".", url)
-        filename = os.path.join(get_dir(), filename)
+        filename = os.path.join(get_hub_dir(), filename)
     else:
         filename = os.path.expanduser(filename)
         filename = os.path.abspath(filename)
