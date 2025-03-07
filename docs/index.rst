@@ -58,7 +58,7 @@ This formalism is closely followed by Azula's API.
    for x in train_loader:
       t = torch.rand((batch_size,))
 
-      loss = denoiser.loss(x, t).mean()
+      loss = denoiser.loss(x, t)
       loss.backward()
 
       optimizer.step()
@@ -87,10 +87,10 @@ Alternatively, Azula's plugin interface allows to load pre-trained models and us
    # Generate a batch of 4 images
    sampler = DDIMSampler(denoiser, steps=64).cuda()
 
-   x1 = sampler.init((4, 3 * 256 * 256))
+   x1 = sampler.init((4, 3, 256, 256))
    x0 = sampler(x1)
 
-   images = torch.clip((x0 + 1) / 2, min=0, max=1).reshape(4, 3, 256, 256)
+   images = torch.clip((x0 + 1) / 2, min=0, max=1)
 
 For more information, check out the :doc:`tutorials <../tutorials>` or the :doc:`API <../api>`.
 
