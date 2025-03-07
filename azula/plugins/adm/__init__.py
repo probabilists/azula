@@ -24,16 +24,19 @@ References:
 __all__ = [
     "BetaSchedule",
     "ImprovedDenoiser",
-    "list_models",
+    "model_cards",
     "load_model",
 ]
 
 import numpy as np
+import os
 import torch
 import torch.nn as nn
+import yaml
 
 from torch import LongTensor, Tensor
-from typing import List, Sequence, Set, Tuple
+from types import SimpleNamespace
+from typing import Dict, Sequence, Tuple
 
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
@@ -44,8 +47,6 @@ try:
     from guided_diffusion import unet  # type: ignore
 except ImportError as e:
     unet = RaiseMock(name="guided_diffusion.unet", error=e)
-
-from . import database
 
 
 class BetaSchedule(Schedule):
@@ -162,10 +163,15 @@ class ImprovedDenoiser(GaussianDenoiser):
         return Gaussian(mean=mean, var=var)
 
 
-def list_models() -> List[str]:
-    r"""Returns the list of available pre-trained models."""
+def model_cards() -> Dict[str, SimpleNamespace]:
+    r"""Returns a key-card mapping of available pre-trained models."""
 
-    return database.keys()
+    file = os.path.join(os.path.dirname(__file__), "cards.yml")
+
+    with open(file, mode="r") as f:
+        cards = yaml.safe_load(f)
+
+    return {key: SimpleNamespace(**card) for key, card in cards.items()}
 
 
 def load_model(key: str, **kwargs) -> GaussianDenoiser:
@@ -182,10 +188,10 @@ def load_model(key: str, **kwargs) -> GaussianDenoiser:
     kwargs.setdefault("map_location", "cpu")
     kwargs.setdefault("weights_only", True)
 
-    url, config = database.get(key)
-    state = torch.load(download(url), **kwargs)
+    card = model_cards()[key]
+    state = torch.load(download(card.url, hash_prefix=card.hash), **kwargs)
 
-    denoiser = make_model(**config)
+    denoiser = make_model(**card.config)
     denoiser.backbone.load_state_dict(state)
     denoiser.eval()
 
@@ -202,7 +208,7 @@ def make_model(
     image_channels: int = 3,
     image_size: int = 64,
     # Backbone
-    attention_resolutions: Set[int] = {32, 16, 8},  # noqa: B006
+    attention_resolutions: Sequence[int] = (32, 16, 8),
     channel_mult: Sequence[int] = (1, 2, 3, 4),
     dropout: float = 0.0,
     num_channels: int = 128,

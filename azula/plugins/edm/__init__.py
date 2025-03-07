@@ -24,23 +24,23 @@ References:
 __all__ = [
     "ElucidatedSchedule",
     "ElucidatedDenoiser",
-    "list_models",
+    "model_cards",
     "load_model",
 ]
 
+import os
 import pickle
-import re
 import torch
 import torch.nn as nn
+import yaml
 
 from torch import Tensor
-from typing import List, Optional, Tuple
+from types import SimpleNamespace
+from typing import Dict, Optional, Tuple
 
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.noise import Schedule
-
-from . import database
 
 
 class ElucidatedSchedule(Schedule):
@@ -110,10 +110,15 @@ class ElucidatedDenoiser(GaussianDenoiser):
         return Gaussian(mean=mean, var=var)
 
 
-def list_models() -> List[str]:
-    r"""Returns the list of available pre-trained models."""
+def model_cards() -> Dict[str, SimpleNamespace]:
+    r"""Returns a key-card mapping of available pre-trained models."""
 
-    return database.keys()
+    file = os.path.join(os.path.dirname(__file__), "cards.yml")
+
+    with open(file, mode="r") as f:
+        cards = yaml.safe_load(f)
+
+    return {key: SimpleNamespace(**card) for key, card in cards.items()}
 
 
 def load_model(key: str) -> GaussianDenoiser:
@@ -126,9 +131,9 @@ def load_model(key: str) -> GaussianDenoiser:
         A pre-trained denoiser.
     """
 
-    url = database.get(key)
+    card = model_cards()[key]
 
-    with open(download(url), "rb") as f:
+    with open(download(card.url, hash_prefix=card.hash), "rb") as f:
         content = pickle.load(f)
 
     denoiser = content["ema"]

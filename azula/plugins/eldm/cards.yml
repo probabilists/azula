@@ -1,0 +1,25 @@
+# Pre-trained model cards
+
+imagenet_512x512_xs:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm2/posthoc-reconstructions/edm2-img512-xs-2147483-0.200.pkl
+  hash: null
+
+imagenet_512x512_s:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm2/posthoc-reconstructions/edm2-img512-s-2147483-0.190.pkl
+  hash: null
+
+imagenet_512x512_m:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm2/posthoc-reconstructions/edm2-img512-m-2147483-0.155.pkl
+  hash: null
+
+imagenet_512x512_l:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm2/posthoc-reconstructions/edm2-img512-l-1879048-0.155.pkl
+  hash: null
+
+imagenet_512x512_xl:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm2/posthoc-reconstructions/edm2-img512-xl-1342177-0.155.pkl
+  hash: null
+
+imagenet_512x512_xxl:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm2/posthoc-reconstructions/edm2-img512-xxl-0939524-0.150.pkl
+  hash: null

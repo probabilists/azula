@@ -20,15 +20,18 @@ and add it to your Python path before importing the plugin.
 __all__ = [
     "CrowsonSchedule",
     "VelocityDenoiser",
-    "list_models",
+    "model_cards",
     "load_model",
 ]
 
+import os
 import torch
 import torch.nn as nn
+import yaml
 
 from torch import Tensor
-from typing import List, Tuple
+from types import SimpleNamespace
+from typing import Dict, Tuple
 
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
@@ -39,8 +42,6 @@ try:
     import diffusion as crowson  # type: ignore
 except ImportError as e:
     crowson = RaiseMock(name="diffusion", error=e)
-
-from . import database
 
 
 class CrowsonSchedule(Schedule):
@@ -89,10 +90,15 @@ class VelocityDenoiser(GaussianDenoiser):
         return Gaussian(mean=mean, var=var)
 
 
-def list_models() -> List[str]:
-    r"""Returns the list of available pre-trained models."""
+def model_cards() -> Dict[str, SimpleNamespace]:
+    r"""Returns a key-card mapping of available pre-trained models."""
 
-    return database.keys()
+    file = os.path.join(os.path.dirname(__file__), "cards.yml")
+
+    with open(file, mode="r") as f:
+        cards = yaml.safe_load(f)
+
+    return {key: SimpleNamespace(**card) for key, card in cards.items()}
 
 
 def load_model(key: str, **kwargs) -> GaussianDenoiser:
@@ -109,10 +115,10 @@ def load_model(key: str, **kwargs) -> GaussianDenoiser:
     kwargs.setdefault("map_location", "cpu")
     kwargs.setdefault("weights_only", True)
 
-    url, hash_prefix, config = database.get(key)
-    state = torch.load(download(url, hash_prefix=hash_prefix), **kwargs)
+    card = model_cards()[key]
+    state = torch.load(download(card.url, hash_prefix=card.hash), **kwargs)
 
-    denoiser = make_model(**config)
+    denoiser = make_model(**card.config)
     denoiser.backbone.load_state_dict(state)
     denoiser.eval()
 
@@ -120,11 +126,11 @@ def load_model(key: str, **kwargs) -> GaussianDenoiser:
 
 
 def make_model(
-    key: str = "imagenet_128",
+    model: str = "imagenet_128",
 ) -> GaussianDenoiser:
     r"""Initializes a VDM denoiser."""
 
-    backbone = crowson.models.get_model(key)()
+    backbone = crowson.models.get_model(model)()
     schedule = CrowsonSchedule(spliced=backbone.min_t == 0)
 
     return VelocityDenoiser(backbone, schedule)

@@ -31,16 +31,19 @@ References:
 __all__ = [
     "AutoEncoder",
     "ElucidatedLatentDenoiser",
-    "list_models",
+    "model_cards",
     "load_model",
 ]
 
+import os
 import pickle
 import torch
 import torch.nn as nn
+import yaml
 
 from torch import Tensor
-from typing import List, Optional, Tuple
+from types import SimpleNamespace
+from typing import Dict, Optional, Tuple
 
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
@@ -52,7 +55,6 @@ try:
 except ImportError as e:
     AutoencoderKL = RaiseMock(name="diffusers.models.AutoencoderKL", error=e)
 
-from . import database
 from ..edm import ElucidatedSchedule
 
 
@@ -182,10 +184,15 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
         return Gaussian(mean=mean, var=var)
 
 
-def list_models() -> List[str]:
-    r"""Returns the list of available pre-trained models."""
+def model_cards() -> Dict[str, SimpleNamespace]:
+    r"""Returns a key-card mapping of available pre-trained models."""
 
-    return database.keys()
+    file = os.path.join(os.path.dirname(__file__), "cards.yml")
+
+    with open(file, mode="r") as f:
+        cards = yaml.safe_load(f)
+
+    return {key: SimpleNamespace(**card) for key, card in cards.items()}
 
 
 def load_model(key: str) -> Tuple[GaussianDenoiser, AutoEncoder]:
@@ -198,9 +205,9 @@ def load_model(key: str) -> Tuple[GaussianDenoiser, AutoEncoder]:
         A pre-trained latent denoiser and the corresponding auto-encoder.
     """
 
-    url = database.get(key)
+    card = model_cards()[key]
 
-    with open(download(url), "rb") as f:
+    with open(download(card.url, card.hash), "rb") as f:
         content = pickle.load(f)
 
     denoiser = content["ema"]

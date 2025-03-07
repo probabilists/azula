@@ -1,0 +1,21 @@
+# Pre-trained model cards
+
+cifar10_32x32:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-uncond-ve.pkl
+  hash: null
+
+cifar10_32x32_cond:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-ve.pkl
+  hash: null
+
+afhq_64x64:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-afhqv2-64x64-uncond-ve.pkl
+  hash: null
+
+ffhq_64x64:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-ffhq-64x64-uncond-ve.pkl
+  hash: null
+
+imagenet_64x64_cond:
+  url: https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-imagenet-64x64-cond-adm.pkl
+  hash: null
