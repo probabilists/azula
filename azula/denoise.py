@@ -52,11 +52,11 @@ class Gaussian:
     def log_prob(self, x: Tensor) -> Tensor:
         r"""
         Arguments:
-            x: A tensor :math:`x`, with shape :math:`(*, S)`.
+            x: A tensor :math:`x`, with shape :math:`(*)`.
 
         Returns:
             The log-density :math:`\log \mathcal{N}(x \mid \mu, \sigma^2)`, with shape
-            :math:`(*, S)`.
+            :math:`(*)`.
         """
 
         return -((x - self.mean) ** 2 / self.var + torch.log(self.var) + math.log(2 * math.pi)) / 2

@@ -47,16 +47,35 @@ class Sampler(nn.Module):
     r"""Abstract reverse diffusion sampler.
 
     Arguments:
+        start: The starting time :math:`t_T`.
+        stop: The stopping time :math:`t_0`.
         steps: The number of discretization steps :math:`T`. By default, the step size
-            :math:`t - s` is constant.
+            :math:`t_{i} - t_{i-1}` is constant.
     """
 
     denoiser: GaussianDenoiser
 
-    def __init__(self, steps: int):
+    def __init__(
+        self,
+        start: float = 1.0,
+        stop: float = 0.0,
+        steps: int = 64,
+    ):
         super().__init__()
 
-        self.register_buffer("timesteps", torch.linspace(1, 0, steps + 1))
+        self.register_buffer("start", torch.as_tensor(start))
+        self.register_buffer("stop", torch.as_tensor(stop))
+        self.steps = steps
+
+    @property
+    def timesteps(self) -> Tensor:
+        return torch.linspace(
+            self.start,
+            self.stop,
+            self.steps + 1,
+            dtype=self.start.dtype,
+            device=self.start.device,
+        )
 
     @torch.no_grad()
     def init(
@@ -66,9 +85,9 @@ class Sampler(nn.Module):
         var: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
-        r"""Draws an initial noisy tensor :math:`x_1`.
+        r"""Draws an initial noisy tensor :math:`x_{t_T}`.
 
-        .. math:: x_1 \sim \mathcal{N}(\alpha_1 \mathbb{E}[X], \alpha_1^2 \mathbb{V}[X] + \sigma_1^2 I)
+        .. math:: x_{t_T} \sim \mathcal{N}(\alpha_{t_T} \mathbb{E}[X], \alpha_{t_T}^2 \mathbb{V}[X] + \sigma_{t_T}^2 I)
 
         Arguments:
             shape: The shape :math:`(*)` of the tensor.
@@ -82,10 +101,10 @@ class Sampler(nn.Module):
             A noisy tensor :math:`x_1`, with shape :math:`(*)`.
         """
 
-        kwargs.setdefault("dtype", self.timesteps.dtype)
-        kwargs.setdefault("device", self.timesteps.device)
+        kwargs.setdefault("dtype", self.start.dtype)
+        kwargs.setdefault("device", self.start.device)
 
-        alpha_1, sigma_1 = self.denoiser.schedule(self.timesteps[0])
+        alpha_1, sigma_1 = self.denoiser.schedule(self.start)
 
         if mean is None:
             mean = torch.zeros_like(alpha_1)
@@ -98,29 +117,29 @@ class Sampler(nn.Module):
         return alpha_1 * mean + torch.sqrt(alpha_1**2 * var + sigma_1**2) * z
 
     @torch.no_grad()
-    def forward(self, x_1: Tensor, **kwargs) -> Tensor:
-        r"""Simulates the reverse process from :math:`t = 1` to :math:`0`.
+    def forward(self, x: Tensor, **kwargs) -> Tensor:
+        r"""Simulates the reverse process from :math:`t_T` to :math:`t_0`.
 
         Arguments:
-            x_1: A noisy tensor :math:`x_1`, with shape :math:`(*, D)`.
+            x: A noisy tensor :math:`x_{t_T}`, with shape :math:`(*, D)`.
             kwargs: Optional keyword arguments.
 
         Returns:
-            The clean tensor :math:`x_0`, with shape :math:`(*, D)`.
+            The clean(er) tensor :math:`x_{t_0}`, with shape :math:`(*, D)`.
         """
 
-        x_t = x_1
+        x_t = x
 
         for t, s in self.timesteps.unfold(0, 2, 1):
             x_s = self.step(x_t, t, s, **kwargs)
             x_t = x_s
 
-        x_0 = x_t
+        x = x_t
 
-        return x_0
+        return x
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
-        r"""Simulates the reverse process from :math:`t` to :math:`s \leq t`.
+        r"""Simulates the reverse process from :math:`t` to :math:`s < t`.
 
         Arguments:
             x_t: The current tensor :math:`x_t`, with shape :math:`(*, D)`.
@@ -138,7 +157,7 @@ class Sampler(nn.Module):
 class DDPMSampler(Sampler):
     r"""Creates an DDPM sampler.
 
-    .. math:: x_s = \alpha_s \mu_\phi(x_t)
+    .. math:: x_s \gets \alpha_s \mu_\phi(x_t)
         + \sigma_s \, \sqrt{1 - \tau} \, \frac{x_t - \alpha_t \mu_\phi(x_t)}{\sigma_t}
         + \sigma_s \, \sqrt{\tau} \, \epsilon
 
@@ -179,7 +198,7 @@ class DDPMSampler(Sampler):
 class DDIMSampler(Sampler):
     r"""Creates a DDIM sampler.
 
-    .. math:: x_s = \alpha_s \mu_\phi(x_t)
+    .. math:: x_s \gets \alpha_s \mu_\phi(x_t)
         + \sigma_s \, \sqrt{1 - \eta \, \tau} \, \frac{x_t - \alpha_t \mu_\phi(x_t)}{\sigma_t}
         + \sigma_s \, \sqrt{\eta \, \tau} \, \epsilon
 
@@ -332,6 +351,9 @@ class ABSampler(Sampler):
         & = \sum_{k=0}^{n-1} a_{ik} \int_t^s u^k \, du \\
         & = \sum_{k=0}^{n-1} a_{ik} \left[ \frac{u^{k+1}}{k+1} \right]_t^s
 
+    Wikipedia:
+        https://wikipedia.org/wiki/Linear_multistep_method
+
     Arguments:
         denoiser: A Gaussian denoiser.
         order: The order :math:`n` of the multi-step method.
@@ -369,11 +391,11 @@ class ABSampler(Sampler):
         return torch.linalg.solve(V, b).to(dtype=t.dtype)
 
     @torch.no_grad()
-    def forward(self, x_1: Tensor, **kwargs) -> Tensor:
+    def forward(self, x: Tensor, **kwargs) -> Tensor:
         alpha, sigma = self.denoiser.schedule(self.timesteps)
         rho = sigma / alpha
 
-        x_t = x_1
+        x_t = x
 
         buffer = []
 
@@ -391,11 +413,12 @@ class ABSampler(Sampler):
             coeffs = self.adams_bashforth(rho[: i + 2], n=self.order)
             integral = sum(b * c for b, c in zip(buffer, coeffs))
 
-            x_t = alpha_s / alpha_t * x_t + alpha_s * integral
+            x_s = alpha_s / alpha_t * x_t + alpha_s * integral
+            x_t = x_s
 
-        x_0 = x_t
+        x = x_t
 
-        return x_0
+        return x
 
 
 class EABSampler(Sampler):
@@ -478,11 +501,11 @@ class EABSampler(Sampler):
         return torch.linalg.solve(V, b).to(dtype=t.dtype)
 
     @torch.no_grad()
-    def forward(self, x_1: Tensor, **kwargs) -> Tensor:
+    def forward(self, x: Tensor, **kwargs) -> Tensor:
         alpha, sigma = self.denoiser.schedule(self.timesteps)
         log_rho = sigma.log() - alpha.log()
 
-        x_t = x_1
+        x_t = x
 
         buffer = []
 
@@ -500,11 +523,12 @@ class EABSampler(Sampler):
             coeffs = self.exponential_adams_bashforth(log_rho[: i + 2], n=self.order)
             integral = sum(b * c for b, c in zip(buffer, coeffs))
 
-            x_t = alpha_s / alpha_t * x_t + alpha_s * integral
+            x_s = alpha_s / alpha_t * x_t + alpha_s * integral
+            x_t = x_s
 
-        x_0 = x_t
+        x = x_t
 
-        return x_0
+        return x
 
 
 class PCSampler(Sampler):

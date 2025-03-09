@@ -238,7 +238,7 @@ class UNet(nn.Module):
         Arguments:
             x: The input tensor, with shape :math:`(B, C_i, L_1, ..., L_N)`.
             mod: The modulation vector, with shape :math:`(D)` or :math:`(B, D)`.
-            cond: The condition tensor, with :math:`(B, C_c, L_1, ..., L_N)`.
+            cond: The condition tensor, with shape :math:`(B, C_c, L_1, ..., L_N)`.
 
         Returns:
             The output tensor, with shape :math:`(B, C_o, L_1, ..., L_N)`.
@@ -277,15 +277,7 @@ class UNet(nn.Module):
 
 
 class SelfAttentionNd(MultiheadSelfAttention):
-    r"""Creates an N-dimensional self-attention layer.
-
-    Arguments:
-        channels: The number of channels :math:`C`.
-        kwargs: Keyword arguments passed to :class:`azula.nn.attention.MultiheadSelfAttention`.
-    """
-
-    def __init__(self, channels: int, **kwargs):
-        super().__init__(channels=channels, **kwargs)
+    r"""Creates an N-dimensional self-attention layer."""
 
     def forward(self, x: Tensor) -> Tensor:
         r"""
