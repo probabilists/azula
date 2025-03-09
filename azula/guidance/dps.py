@@ -26,6 +26,7 @@ class DPSSampler(Sampler):
         y: An observation :math:`y \sim \mathcal{N}(\mathcal{A}(x), \Sigma_y)`.
         A: The forward operator :math:`\mathcal{A}`.
         zeta: The guidance strength :math:`\zeta`.
+        kwargs: Keyword arguments passed to :class:`azula.sample.Sampler`.
     """
 
     def __init__(
@@ -39,7 +40,6 @@ class DPSSampler(Sampler):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
-
         self.A = A
 
         self.register_buffer("y", torch.as_tensor(y))
