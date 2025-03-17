@@ -94,7 +94,7 @@ class PreconditionedDenoiser(GaussianDenoiser):
     .. math::
         \mu_\phi(x_t) & = c_\mathrm{skip}(t) \, x_t +
             c_\mathrm{out}(t) \, b_\phi(c_\mathrm{in}(t) \, x_t, c_\mathrm{noise}(t)) \\
-        \sigma^2_\phi(x_t) & = \frac{\sigma_t^2}{\alpha_t^2 + \sigma_t^2}
+        \sigma^2_\phi(x_t) & = \frac{\sigma_x^2 \, \sigma_t^2}{\sigma_x^2 \, \alpha_t^2 + \sigma_t^2}
 
     The preconditioning coefficients are generalized to take the scale :math:`\alpha_t`
     into account.
@@ -112,13 +112,16 @@ class PreconditionedDenoiser(GaussianDenoiser):
     Arguments:
         backbone: A noise conditional network :math:`b_\phi(x_t, \sigma_t)`.
         schedule: A noise schedule.
+        var_x: The signal variance :math:`\sigma_x^2`.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: Schedule):
+    def __init__(self, backbone: nn.Module, schedule: Schedule, var_x: Tensor = 1.0):
         super().__init__()
 
         self.backbone = backbone
         self.schedule = schedule
+
+        self.register_buffer("var_x", torch.as_tensor(var_x))
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)
@@ -132,7 +135,7 @@ class PreconditionedDenoiser(GaussianDenoiser):
         c_noise = torch.log(sigma_t / alpha_t).reshape_as(t)
 
         mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_noise, **kwargs)
-        var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
+        var = self.var_x * sigma_t**2 / (self.var_x * alpha_t**2 + sigma_t**2)
 
         return Gaussian(mean=mean, var=var)
 
