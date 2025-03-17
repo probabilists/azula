@@ -25,8 +25,8 @@ class MMPSDenoiser(GaussianDenoiser):
 
     Arguments:
         denoiser: A Gaussian denoiser.
-        y: An observation :math:`y \sim \mathcal{N}(Ax, \Sigma_y)`, with shape :math:`(*, D)`.
-        A: The forward operator :math:`x \mapsto Ax`.
+        y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`, with shape :math:`(*, D)`.
+        A: The forward operator :math:`x \mapsto A(x)`.
         var_y: The noise variance :math:`\Sigma_y`.
         tweedie_covariance: Whether to use the Tweedie covariance formula or not.
             If :py:`False`, use :math:`\Sigma_\phi(x_t)` instead.
@@ -77,6 +77,9 @@ class MMPSDenoiser(GaussianDenoiser):
             x_hat = q.mean
             y_hat = self.A(x_hat)
 
+        def A(v):
+            return torch.func.jvp(self.A, (x_hat.detach(),), (v,))[1]
+
         def At(v):
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
@@ -90,7 +93,7 @@ class MMPSDenoiser(GaussianDenoiser):
         # fmt: on
 
         def cov_y(v):
-            return self.var_y * v + self.A(cov_x(At(v)))
+            return self.var_y * v + A(cov_x(At(v)))
 
         grad = self.y - y_hat
         grad = self.solve(A=cov_y, b=grad)
