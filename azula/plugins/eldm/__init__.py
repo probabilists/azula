@@ -89,7 +89,7 @@ class AutoEncoder(nn.Module):
             z: A batch of latents :math:`z`, with shape :math:`(B, 4, 64, 64)`.
 
         Returns:
-            A batch of images :math:`x = d(z)`, with shape :math:`(B, 3, 512, 512)`.
+            A batch of images :math:`x = D(z)`, with shape :math:`(B, 3, 512, 512)`.
         """
 
         z = (z - self.shift) / self.scale
