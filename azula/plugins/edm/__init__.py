@@ -24,23 +24,21 @@ References:
 __all__ = [
     "ElucidatedSchedule",
     "ElucidatedDenoiser",
-    "model_cards",
     "load_model",
 ]
 
-import os
 import pickle
 import torch
 import torch.nn as nn
-import yaml
 
 from torch import Tensor
-from types import SimpleNamespace
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.noise import Schedule
+
+from ..utils import load_cards
 
 
 class ElucidatedSchedule(Schedule):
@@ -94,44 +92,50 @@ class ElucidatedDenoiser(GaussianDenoiser):
         else:
             self.schedule = schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(
+        self,
+        x_t: Tensor,
+        t: Tensor,
+        label: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Gaussian:
+        r"""
+        Arguments:
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, 3, H, W)`.
+            t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
+            label: The class label :math:`c` as a one-hot vector, with shape :math:`(*, 1000)`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t \mid c), \Sigma_\phi(x_t \mid c))`.
+        """
+
         alpha_t, sigma_t = self.schedule(t)
-        sigma_t, x_t = sigma_t / alpha_t, x_t / alpha_t
 
-        kwargs.setdefault("class_labels", kwargs.pop("label", None))
+        while alpha_t.ndim < x_t.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
-        mean = self.backbone(x_t, sigma_t, **kwargs)
+        c_in = 1 / alpha_t
+        c_time = (sigma_t / alpha_t).reshape_as(t)
+        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
-        while sigma_t.ndim < x_t.ndim:
-            sigma_t = sigma_t[..., None]
-
-        var = sigma_t**2 / (1 + sigma_t**2)
+        mean = self.backbone(c_in * x_t, c_time, class_labels=label, **kwargs)
+        var = c_var
 
         return Gaussian(mean=mean, var=var)
 
 
-def model_cards() -> Dict[str, SimpleNamespace]:
-    r"""Returns a key-card mapping of available pre-trained models."""
-
-    file = os.path.join(os.path.dirname(__file__), "cards.yml")
-
-    with open(file, mode="r") as f:
-        cards = yaml.safe_load(f)
-
-    return {key: SimpleNamespace(**card) for key, card in cards.items()}
-
-
-def load_model(key: str) -> GaussianDenoiser:
+def load_model(name: str) -> GaussianDenoiser:
     r"""Loads a pre-trained EDM denoiser.
 
     Arguments:
-        key: The pre-trained model key.
+        name: The pre-trained model name.
 
     Returns:
         A pre-trained denoiser.
     """
 
-    card = model_cards()[key]
+    card = load_cards(__name__)[name]
 
     with open(download(card.url, hash_prefix=card.hash), "rb") as f:
         content = pickle.load(f)
