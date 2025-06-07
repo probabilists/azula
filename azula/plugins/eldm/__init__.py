@@ -126,7 +126,6 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
         x_t: Tensor,
         t: Tensor,
         label: Optional[Tensor] = None,
-        guidance: Optional[Tensor] = None,
         **kwargs,
     ) -> Gaussian:
         r"""
@@ -134,8 +133,6 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, 4, 64, 64)`.
             t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
             label: The class label :math:`c` as a one-hot vector, with shape :math:`(*, 1000)`.
-            guidance: The classifier-free guidance strength :math:`\omega \in \mathbb{R}`.
-                If :py:`None`, classifier-free guidance is not applied.
             kwargs: Optional keyword arguments.
 
         Returns:
@@ -153,12 +150,8 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
 
         if label is None:
             mean = self.backbone(c_in * x_t, c_time, **kwargs)
-        elif guidance is None:
-            mean = self.backbone(c_in * x_t, c_time, class_labels=label, **kwargs)
         else:
             mean = self.backbone(c_in * x_t, c_time, class_labels=label, **kwargs)
-            mean_null = self.backbone(c_in * x_t, c_time, **kwargs)
-            mean = mean + guidance * (mean - mean_null)
 
         var = c_var
 

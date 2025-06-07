@@ -209,8 +209,8 @@ class FluxDenoiser(GaussianDenoiser):
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, H, W, 64)`.
             t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
-            prompt_clip: The CLIP-encoded text prompt :math:`y`, with shape :math:`(*, F)`.
-            prompt_t5: The T5-encoded text prompt :math:`y`, with shape :math:`(*, L, D)`.
+            prompt_clip: The CLIP-encoded text prompt :math:`y`, with shape :math:`(B, F)`.
+            prompt_t5: The T5-encoded text prompt :math:`y`, with shape :math:`(B, L, D)`.
             guidance: The guidance strength :math:`\omega \in \mathbb{R}`.
             kwargs: Optional keyword arguments.
 
@@ -237,11 +237,11 @@ class FluxDenoiser(GaussianDenoiser):
         img_ids = self.coordinates(H, W, **dtype)
         txt_ids = torch.zeros((1, L, 3), **dtype)
 
-        guidance = torch.as_tensor(guidance, **dtype)
-        guidance = torch.atleast_1d(guidance)
+        if guidance is not None:
+            guidance = torch.as_tensor(guidance, **dtype).expand(B)
 
         output = self.backbone(
-            timestep=c_time.to(**dtype),
+            timestep=c_time.to(**dtype).expand(B),
             hidden_states=(c_in * x_t).to(**dtype).reshape(B, H * W, C),
             encoder_hidden_states=prompt_t5.to(**dtype).expand(B, L, D),
             pooled_projections=prompt_clip.to(**dtype),

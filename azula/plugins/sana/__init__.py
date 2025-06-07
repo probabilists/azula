@@ -135,7 +135,7 @@ class TextEncoder(nn.Module):
 
         if instructions:
             chi = "\n".join(instructions)
-            prompt = [chi + text for text in prompt]
+            prompt = [chi + text if text else "" for text in prompt]
             max_length_all = self.max_length + len(self.tokenizer.encode(chi)) - 2
         else:
             max_length_all = self.max_length
@@ -199,8 +199,8 @@ class SanaDenoiser(GaussianDenoiser):
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, C, H, W)`.
             t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
-            prompt_embeds: The Gemma-encoded text prompt :math:`y`, with shape :math:`(*, L, D)`.
-            prompt_mask: The text attention mask, with shape :math:`(*, L, L)`.
+            prompt_embeds: The Gemma-encoded text prompt :math:`y`, with shape :math:`(B, L, D)`.
+            prompt_mask: The text attention mask, with shape :math:`(B, L)`.
             kwargs: Optional keyword arguments.
 
         Returns:
@@ -218,13 +218,16 @@ class SanaDenoiser(GaussianDenoiser):
         c_time = 1000 * (sigma_t / (alpha_t + sigma_t)).flatten()
         c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
+        B, _, _, _ = x_t.shape
+        _, L, D = prompt_embeds.shape
+
         dtype = {"dtype": self.backbone.dtype, "device": self.backbone.device}
 
         output = self.backbone(
-            timestep=c_time.to(**dtype),
+            timestep=c_time.to(**dtype).expand(B),
             hidden_states=(c_in * x_t).to(**dtype),
-            encoder_hidden_states=prompt_embeds.to(**dtype),
-            encoder_attention_mask=prompt_mask.to(**dtype),
+            encoder_hidden_states=prompt_embeds.to(**dtype).expand(B, L, D),
+            encoder_attention_mask=prompt_mask.to(**dtype).expand(B, L),
             **kwargs,
         ).sample
 
