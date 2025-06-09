@@ -27,6 +27,9 @@ def test_UNet(
     spatial: int,
     batch_size: int,
 ):
+    if attention_heads and torch.__version__.startswith("1"):
+        return
+
     make = lambda: UNet(
         in_channels=in_channels,
         out_channels=out_channels,
