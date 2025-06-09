@@ -23,7 +23,7 @@ class DTMPDenoiser(GaussianDenoiser):
 
     Arguments:
         denoiser: A Gaussian denoiser.
-        y: An observation :math:`y \sim \mathcal{N}(A x, \Sigma_y)`, with shape :math:`(*, D)`.
+        y: An observation :math:`y \sim \mathcal{N}(A x, \Sigma_y)`.
         A: The forward operator :math:`x \mapsto A x`.
         var_y: The noise variance :math:`\Sigma_y`.
     """
@@ -59,16 +59,13 @@ class DTMPDenoiser(GaussianDenoiser):
             x_hat = q.mean
             y_hat = self.A(x_hat)
 
-        def A(v):
-            return torch.func.jvp(self.A, (x_hat.detach(),), (v,))[1]
-
         def At(v):
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
         def cov_x(v):
             return gamma_t * torch.autograd.grad(x_hat, x_t, v, retain_graph=True)[0]
 
-        var_Ax = A(cov_x(At(torch.ones_like(y_hat))))
+        var_Ax = self.A(cov_x(At(torch.ones_like(y_hat))))
 
         grad = (self.y - y_hat) / (self.var_y + var_Ax)
         grad = torch.autograd.grad(y_hat, x_t, grad)[0]

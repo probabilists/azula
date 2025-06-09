@@ -1,4 +1,4 @@
-r"""Diffusion posterior sampling (DPS) internals.
+r"""Diffusion Posterior Sampling (DPS) internals.
 
 References:
     | Diffusion Posterior Sampling for General Noisy Inverse Problems (Chung et al., 2022)
@@ -23,8 +23,8 @@ class DPSSampler(Sampler):
 
     Arguments:
         denoiser: A Gaussian denoiser.
-        y: An observation :math:`y \sim \mathcal{N}(\mathcal{A}(x), \Sigma_y)`.
-        A: The forward operator :math:`\mathcal{A}`.
+        y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`.
+        A: The forward operator :math:`x \mapsto A(x)`.
         zeta: The guidance strength :math:`\zeta`.
         kwargs: Keyword arguments passed to :class:`azula.sample.Sampler`.
     """
@@ -55,15 +55,15 @@ class DPSSampler(Sampler):
 
         with torch.enable_grad():
             x_t = x_t.detach().requires_grad_()
-            q = self.denoiser(x_t, t, **kwargs)
+            x_hat = self.denoiser(x_t, t, **kwargs).mean
 
-        x_s = alpha_s * q.mean
-        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q.mean)
+        x_s = alpha_s * x_hat
+        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * x_hat)
         x_s = x_s + sigma_s * torch.sqrt(tau) * eps
 
         # DPS
         with torch.enable_grad():
-            error = self.y - self.A(q.mean)
+            error = self.y - self.A(x_hat)
             norm = torch.linalg.vector_norm(error)
 
         grad = torch.autograd.grad(norm, x_t)[0]

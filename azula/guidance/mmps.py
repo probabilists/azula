@@ -1,4 +1,4 @@
-r"""Moment matching posterior sampling (MMPS) internals.
+r"""Moment Matching Posterior Sampling (MMPS) internals.
 
 References:
     | Learning Diffusion Priors from Observations by Expectation Maximization (Rozet et al., 2024)

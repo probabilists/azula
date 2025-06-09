@@ -121,11 +121,11 @@ class Sampler(nn.Module):
         r"""Simulates the reverse process from :math:`t_T` to :math:`t_0`.
 
         Arguments:
-            x: A noisy tensor :math:`x_{t_T}`, with shape :math:`(*, D)`.
+            x: A noisy tensor :math:`x_{t_T}`, with shape :math:`(*)`.
             kwargs: Optional keyword arguments.
 
         Returns:
-            The clean(er) tensor :math:`x_{t_0}`, with shape :math:`(*, D)`.
+            The clean(er) tensor :math:`x_{t_0}`, with shape :math:`(*)`.
         """
 
         x_t = x
@@ -142,13 +142,13 @@ class Sampler(nn.Module):
         r"""Simulates the reverse process from :math:`t` to :math:`s < t`.
 
         Arguments:
-            x_t: The current tensor :math:`x_t`, with shape :math:`(*, D)`.
-            t: The current time :math:`t`, with shape :math:`(*)`.
-            s: The target time :math:`s`, with shape :math:`(*)`.
+            x_t: The current tensor :math:`x_t`, with shape :math:`(*)`.
+            t: The current time :math:`t`, with shape :math:`()`.
+            s: The target time :math:`s`, with shape :math:`()`.
             kwargs: Optional keyword arguments.
 
         Returns:
-            The new tensor :math:`x_s \sim q(X_s \mid x_t)`, with shape :math:`(*, D)`.
+            The new tensor :math:`x_s \sim q(X_s \mid x_t)`, with shape :math:`(*)`.
         """
 
         raise NotImplementedError()
