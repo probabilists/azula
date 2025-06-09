@@ -125,12 +125,29 @@ def apply_rope(q: Tensor, k: Tensor, theta: Tensor) -> Tuple[Tensor, Tensor]:
         The rotated query and key tokens, with shape :math:`(*, C)`.
     """
 
-    rotation = torch.polar(torch.ones_like(theta), theta)
+    q = q.unflatten(-1, (-1, 2))
+    k = k.unflatten(-1, (-1, 2))
 
-    q = torch.view_as_complex(torch.unflatten(q, -1, (-1, 2)))
-    k = torch.view_as_complex(torch.unflatten(k, -1, (-1, 2)))
+    q_real, q_imag = q[..., 0], q[..., 1]
+    k_real, k_imag = k[..., 0], k[..., 1]
 
-    q = torch.flatten(torch.view_as_real(rotation * q), -2)
-    k = torch.flatten(torch.view_as_real(rotation * k), -2)
+    cos_theta = torch.cos(theta)
+    sin_theta = torch.sin(theta)
+
+    q = torch.stack(
+        (
+            q_real * cos_theta - q_imag * sin_theta,
+            q_real * sin_theta + q_imag * cos_theta,
+        ),
+        dim=-1,
+    ).flatten(-2)
+
+    k = torch.stack(
+        (
+            k_real * cos_theta - k_imag * sin_theta,
+            k_real * sin_theta + k_imag * cos_theta,
+        ),
+        dim=-1,
+    ).flatten(-2)
 
     return q, k
