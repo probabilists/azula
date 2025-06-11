@@ -6,7 +6,7 @@ References:
 """
 
 __all__ = [
-    "DTMPDenoiser",
+    "TMPDenoiser",
 ]
 
 import torch
@@ -18,8 +18,8 @@ from ..denoise import Gaussian, GaussianDenoiser
 from ..noise import Schedule
 
 
-class DTMPDenoiser(GaussianDenoiser):
-    r"""Creates a diagonal TMPD denoiser module.
+class TMPDenoiser(GaussianDenoiser):
+    r"""Creates a TMPD denoiser module.
 
     Arguments:
         denoiser: A Gaussian denoiser.
