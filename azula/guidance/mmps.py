@@ -28,8 +28,6 @@ class MMPSDenoiser(GaussianDenoiser):
         y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`, with shape :math:`(*, D)`.
         A: The forward operator :math:`x \mapsto A(x)`.
         var_y: The noise variance :math:`\Sigma_y`.
-        tweedie_covariance: Whether to use the Tweedie covariance formula or not.
-            If :py:`False`, use :math:`\Sigma_\phi(x_t)` instead.
         solver: The linear solver name (:py:`"cg"` or :py:`"gmres"`).
         iterations: The number of solver iterations.
     """
@@ -40,7 +38,6 @@ class MMPSDenoiser(GaussianDenoiser):
         y: Tensor,
         A: Callable[[Tensor], Tensor],
         var_y: Tensor,
-        tweedie_covariance: bool = True,
         solver: str = "gmres",
         iterations: int = 1,
     ):
@@ -52,8 +49,6 @@ class MMPSDenoiser(GaussianDenoiser):
 
         self.register_buffer("y", torch.as_tensor(y))
         self.register_buffer("var_y", torch.as_tensor(var_y))
-
-        self.tweedie_covariance = tweedie_covariance
 
         if solver == "cg":
             self.solve = partial(cg, iterations=iterations)
@@ -83,14 +78,8 @@ class MMPSDenoiser(GaussianDenoiser):
         def At(v):
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
-        # fmt: off
-        if self.tweedie_covariance:
-            def cov_x(v):
-                return gamma_t * torch.autograd.grad(x_hat, x_t, v, retain_graph=True)[0]
-        else:
-            def cov_x(v):
-                return q.var * v
-        # fmt: on
+        def cov_x(v):
+            return gamma_t * torch.autograd.grad(x_hat, x_t, v, retain_graph=True)[0]
 
         def cov_y(v):
             return self.var_y * v + A(cov_x(At(v)))
