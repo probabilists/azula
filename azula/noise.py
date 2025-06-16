@@ -36,6 +36,7 @@ __all__ = [
     "VPSchedule",
     "CosineSchedule",
     "RectifiedSchedule",
+    "DecaySchedule",
 ]
 
 import abc
@@ -165,8 +166,8 @@ class RectifiedSchedule(Schedule):
     r"""Creates a rectified noise schedule.
 
     .. math::
-        \alpha_t & = t \alpha_\min + (1 - t) \\
-        \sigma_t & = t + (1 - t) \sigma_\min
+        \alpha_t & = t \, \alpha_\min + (1 - t) \\
+        \sigma_t & = t + (1 - t) \, \sigma_\min
 
     References:
         | Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow (Liu et al. 2022)
@@ -190,6 +191,49 @@ class RectifiedSchedule(Schedule):
         return t * self.alpha_min + (1 - t)
 
     def sigma(self, t: Tensor) -> Tensor:
+        return t + (1 - t) * self.sigma_min
+
+    def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+        return self.alpha(t), self.sigma(t)
+
+
+class DecaySchedule(Schedule):
+    r"""Creates an exponential decay schedule.
+
+    .. math::
+        \alpha_t & = \tau \, \alpha_\min + (1 - \tau) \\
+        \sigma_t & = \tau + (1 - \tau) \, \sigma_\min
+
+    where
+
+    .. math:: \tau = \frac{1 - \gamma^t}{1 - \gamma}
+
+    The smaller :math:`\gamma`, the more time is allocated to high signal-to-noise
+    ratios. When :math:`\gamma` is close to 1, the schedule becomes equivalent to the
+    :class:`RectifiedSchedule`.
+
+    Arguments:
+        gamma: The decay factor :math:`\gamma \in ]0,1[`.
+        alpha_min: The final signal scale :math:`\alpha_\min \in ]0,1[`.
+        sigma_min: The initial noise scale :math:`\sigma_\min \in ]0,1[`.
+    """
+
+    def __init__(self, gamma: float = 0.1, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
+        super().__init__()
+
+        self.register_buffer("gamma", torch.as_tensor(gamma))
+        self.register_buffer("alpha_min", torch.as_tensor(alpha_min))
+        self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
+
+    def tau(self, t: Tensor) -> Tensor:
+        return (1 - self.gamma**t) / (1 - self.gamma)
+
+    def alpha(self, t: Tensor) -> Tensor:
+        t = self.tau(t)
+        return t * self.alpha_min + (1 - t)
+
+    def sigma(self, t: Tensor) -> Tensor:
+        t = self.tau(t)
         return t + (1 - t) * self.sigma_min
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:

@@ -32,7 +32,7 @@ from typing import Dict, Optional, Sequence, Tuple, Union
 
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.nn.utils import skip_init
-from azula.noise import RectifiedSchedule, Schedule
+from azula.noise import DecaySchedule, Schedule
 
 from ..utils import as_dtype, load_cards
 
@@ -169,7 +169,7 @@ class SanaDenoiser(GaussianDenoiser):
     Arguments:
         backbone: A time conditional network.
         schedule: A noise schedule. If :py:`None`, use
-            :class:`azula.noise.RectifiedSchedule` instead.
+            :class:`azula.noise.DecaySchedule` instead.
     """
 
     def __init__(
@@ -182,7 +182,7 @@ class SanaDenoiser(GaussianDenoiser):
         self.backbone = backbone
 
         if schedule is None:
-            self.schedule = RectifiedSchedule()
+            self.schedule = DecaySchedule()
         else:
             self.schedule = schedule
 
