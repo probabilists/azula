@@ -18,6 +18,7 @@ from typing import Callable
 from ..denoise import Gaussian, GaussianDenoiser
 from ..linalg.solve import cg, gmres
 from ..noise import Schedule
+from ..sample import DDIMSampler
 
 
 class MMPSDenoiser(GaussianDenoiser):
@@ -92,3 +93,70 @@ class MMPSDenoiser(GaussianDenoiser):
             mean=x_hat + gamma_t * grad,
             var=q.var,
         )
+
+
+class YeetSampler(DDIMSampler):
+    def __init__(
+        self,
+        denoiser: GaussianDenoiser,
+        y: Tensor,
+        A: Callable[[Tensor], Tensor],
+        var_y: Tensor,
+        solver: str = "gmres",
+        iterations: int = 1,
+        **kwargs,
+    ):
+        super().__init__(denoiser, **kwargs)
+
+        self.A = A
+
+        self.register_buffer("y", torch.as_tensor(y))
+        self.register_buffer("var_y", torch.as_tensor(var_y))
+
+        if solver == "cg":
+            self.solve = partial(cg, iterations=iterations)
+        elif solver == "gmres":
+            self.solve = partial(gmres, iterations=iterations)
+        else:
+            raise ValueError(f"Unknown solver '{solver}'.")
+
+    def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
+        # DDIM
+        alpha_s, sigma_s = self.denoiser.schedule(s)
+        alpha_t, sigma_t = self.denoiser.schedule(t)
+
+        tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
+        tau = torch.clip(self.eta * tau, min=0, max=1)
+        eps = torch.randn_like(x_t)
+
+        with torch.enable_grad():
+            x_t = x_t.detach().requires_grad_()
+            x_hat = self.denoiser(x_t, t, **kwargs).mean
+
+        x_s = alpha_s * x_hat
+        x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * x_hat)
+        x_s = x_s + sigma_s * torch.sqrt(tau) * eps
+
+        # MMPS
+        gamma_t = sigma_t**2 / alpha_t
+
+        with torch.enable_grad():
+            y_hat = self.A(x_hat)
+
+        def A(v):
+            return torch.func.jvp(self.A, (x_hat.detach(),), (v,))[1]
+
+        def At(v):
+            return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
+
+        def cov_x(v):
+            return gamma_t * torch.autograd.grad(x_hat, x_t, v, retain_graph=True)[0]
+
+        def cov_y(v):
+            return self.var_y * v + A(cov_x(At(v)))
+
+        grad = self.y - y_hat
+        grad = self.solve(A=cov_y, b=grad)
+        grad = torch.autograd.grad(y_hat, x_t, grad)[0]
+
+        return x_s + alpha_s * gamma_t * grad
