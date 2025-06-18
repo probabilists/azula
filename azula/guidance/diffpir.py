@@ -40,7 +40,7 @@ class DiffPIRDenoiser(GaussianDenoiser):
         A: Callable[[Tensor], Tensor],
         var_y: Tensor,
         lmbda: float = 10.0,
-        solver: str = "cg",
+        solver: str = "gmres",
         iterations: int = 1,
     ):
         super().__init__()
