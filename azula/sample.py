@@ -534,14 +534,10 @@ class EABSampler(Sampler):
 class PCSampler(Sampler):
     r"""Creates a predictor-corrector (PC) sampler.
 
-    References:
-        | Score-Based Generative Modeling through Stochastic Differential Equations (Song et al., 2021)
-        | https://arxiv.org/abs/2011.13456
-
     Arguments:
         denoiser: A Gaussian denoiser.
-        corrections: The number of Langevin corrections per step.
-        delta: The amplitude of Langevin corrections.
+        corrections: The number of corrector steps for each predictor step.
+        delta: The amplitude of corrector steps :math:`\delta \in [0,1]`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
@@ -567,9 +563,9 @@ class PCSampler(Sampler):
         for _ in range(self.corrections):
             q_t = self.denoiser(x_t, t, **kwargs)
             x_t = (
-                x_t
-                + self.delta * (alpha_t * q_t.mean - x_t)
-                + torch.sqrt(2 * self.delta) * sigma_t * torch.randn_like(x_t)
+                alpha_t * q_t.mean
+                + torch.sqrt(1 - self.delta) * (x_t - alpha_t * q_t.mean)
+                + torch.sqrt(self.delta) * sigma_t * torch.randn_like(x_t)
             )
 
         # Predictor
