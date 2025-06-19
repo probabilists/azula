@@ -2,14 +2,31 @@ r"""Miscelaneous plugin helpers."""
 
 __all__ = [
     "load_cards",
+    "as_dtype",
 ]
 
 import os
 import sys
+import torch
 import yaml
 
 from types import ModuleType, SimpleNamespace
-from typing import Dict
+from typing import Dict, Optional
+
+
+def as_dtype(name: Optional[str] = None) -> torch.dtype:
+    if name is None:
+        return None
+    elif name == "float64":
+        return torch.float64
+    elif name == "float32":
+        return torch.float32
+    elif name == "float16":
+        return torch.float16
+    elif name == "bfloat16":
+        return torch.bfloat16
+    else:
+        raise ValueError(f"Unknown data type '{name}'.")
 
 
 def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:

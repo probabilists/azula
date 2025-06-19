@@ -76,7 +76,9 @@ class AutoEncoder(nn.Module):
             A batch of latents :math:`z \sim q(Z \mid x)`, with shape :math:`(B, 4, 64, 64)`.
         """
 
-        q_z_x = self.vae.encode(x).latent_dist
+        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+
+        q_z_x = self.vae.encode(x.to(**dtype)).latent_dist
         z = torch.normal(q_z_x.mean, q_z_x.std)
         z = z * self.scale + self.shift
 
@@ -89,11 +91,13 @@ class AutoEncoder(nn.Module):
             z: A batch of latents :math:`z`, with shape :math:`(B, 4, 64, 64)`.
 
         Returns:
-            A batch of images :math:`x = d(z)`, with shape :math:`(B, 3, 512, 512)`.
+            A batch of images :math:`x = D(z)`, with shape :math:`(B, 3, 512, 512)`.
         """
 
+        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+
         z = (z - self.shift) / self.scale
-        x = self.vae.decode(z).sample
+        x = self.vae.decode(z.to(**dtype)).sample
 
         return x
 
