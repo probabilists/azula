@@ -18,25 +18,23 @@ and add it to your Python path before importing the plugin.
 """
 
 __all__ = [
-    "CrowsonSchedule",
     "VelocityDenoiser",
-    "model_cards",
     "load_model",
 ]
 
-import os
 import torch
 import torch.nn as nn
-import yaml
 
 from torch import Tensor
-from types import SimpleNamespace
-from typing import Dict, Tuple
+from typing import Optional
 
 from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
-from azula.noise import Schedule
+from azula.nn.utils import skip_init
+from azula.noise import Schedule, VPSchedule
+
+from ..utils import load_cards
 
 try:
     import diffusion as crowson  # type: ignore
@@ -44,37 +42,28 @@ except ImportError as e:
     crowson = RaiseMock(name="diffusion", error=e)
 
 
-class CrowsonSchedule(Schedule):
-    r"""Creates an angular noise schedule."""
-
-    def __init__(self, spliced: bool = False):
-        super().__init__()
-
-        self.spliced = spliced
-
-    def backbone_time(self, t: Tensor) -> Tensor:
-        if self.spliced:
-            return crowson.utils.get_spliced_ddpm_cosine_schedule(t)
-        else:
-            return crowson.utils.get_ddpm_schedule(t)
-
-    def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
-        return crowson.utils.t_to_alpha_sigma(self.backbone_time(t))
-
-
 class VelocityDenoiser(GaussianDenoiser):
     r"""Creates a velocity denoiser.
 
     Arguments:
         backbone: A time conditional network.
-        schedule: A noise schedule.
+        schedule: A noise schedule. If :py:`None`, use :class:`azula.noise.VPSchedule`
+            instead.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: CrowsonSchedule):
+    def __init__(
+        self,
+        backbone: nn.Module,
+        schedule: Optional[Schedule] = None,
+    ):
         super().__init__()
 
         self.backbone = backbone
-        self.schedule = schedule
+
+        if schedule is None:
+            self.schedule = VPSchedule(alpha_min=1e-2, sigma_min=1e-2)
+        else:
+            self.schedule = schedule
 
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         alpha_t, sigma_t = self.schedule(t)
@@ -82,30 +71,23 @@ class VelocityDenoiser(GaussianDenoiser):
         while alpha_t.ndim < x_t.ndim:
             alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
-        mean = alpha_t * x_t - sigma_t * self.backbone(
-            x_t, self.schedule.backbone_time(t), **kwargs
-        )
-        var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
+        c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_out = -sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_skip = alpha_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_time = crowson.utils.alpha_sigma_to_t(alpha_t, sigma_t).flatten()
+        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
+
+        mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_time, **kwargs)
+        var = c_var
 
         return Gaussian(mean=mean, var=var)
 
 
-def model_cards() -> Dict[str, SimpleNamespace]:
-    r"""Returns a key-card mapping of available pre-trained models."""
-
-    file = os.path.join(os.path.dirname(__file__), "cards.yml")
-
-    with open(file, mode="r") as f:
-        cards = yaml.safe_load(f)
-
-    return {key: SimpleNamespace(**card) for key, card in cards.items()}
-
-
-def load_model(key: str, **kwargs) -> GaussianDenoiser:
+def load_model(name: str, **kwargs) -> GaussianDenoiser:
     r"""Loads a pre-trained VDM denoiser.
 
     Arguments:
-        key: The pre-trained model key.
+        name: The pre-trained model name.
         kwargs: Keyword arguments passed to :func:`torch.load`.
 
     Returns:
@@ -115,10 +97,12 @@ def load_model(key: str, **kwargs) -> GaussianDenoiser:
     kwargs.setdefault("map_location", "cpu")
     kwargs.setdefault("weights_only", True)
 
-    card = model_cards()[key]
+    card = load_cards(__name__)[name]
     state = torch.load(download(card.url, hash_prefix=card.hash), **kwargs)
 
-    denoiser = make_model(**card.config)
+    with skip_init():
+        denoiser = make_model(**card.config)
+
     denoiser.backbone.load_state_dict(state)
     denoiser.eval()
 
@@ -131,6 +115,5 @@ def make_model(
     r"""Initializes a VDM denoiser."""
 
     backbone = crowson.models.get_model(model)()
-    schedule = CrowsonSchedule(spliced=backbone.min_t == 0)
 
-    return VelocityDenoiser(backbone, schedule)
+    return VelocityDenoiser(backbone)

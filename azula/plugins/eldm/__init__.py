@@ -16,8 +16,8 @@ and add it to your Python path before importing the plugin.
     ...
     from azula.plugins import eldm
 
-You may also need to install additional dependencies, including :mod:`diffusers` and
-:mod:`accelerate`.
+You may also need to install additional dependencies in your environment, including
+:mod:`diffusers` and :mod:`accelerate`.
 
 .. code-block:: console
 
@@ -31,41 +31,26 @@ References:
 __all__ = [
     "AutoEncoder",
     "ElucidatedLatentDenoiser",
-    "model_cards",
     "load_model",
 ]
 
-import os
 import pickle
 import torch
 import torch.nn as nn
-import yaml
 
 from torch import Tensor
-from types import SimpleNamespace
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
-from azula.debug import RaiseMock
 from azula.denoise import Gaussian, GaussianDenoiser
 from azula.hub import download
 from azula.noise import Schedule
 
-try:
-    from diffusers.models import AutoencoderKL  # type: ignore
-except ImportError as e:
-    AutoencoderKL = RaiseMock(name="diffusers.models.AutoencoderKL", error=e)
-
 from ..edm import ElucidatedSchedule
+from ..utils import load_cards
 
 
 class AutoEncoder(nn.Module):
-    r"""Creates a standardized auto-encoder.
-
-    Arguments:
-        vae: A (variational) auto-encoder.
-        shift: The shift to apply to latents, with shape :math:`(C, 1, 1)`.
-        scale: The scale to apply to latents, with shape :math:`(C, 1, 1)`.
-    """
+    r"""Creates an auto-encoder wrapper."""
 
     def __init__(
         self,
@@ -116,15 +101,8 @@ class AutoEncoder(nn.Module):
 class ElucidatedLatentDenoiser(GaussianDenoiser):
     r"""Creates an elucidated latent denoiser.
 
-    .. math::
-        \mu_\phi(x_t \mid c) & = (1 - \omega) \, b_\phi(x_t, \sigma_t)
-            + \omega \, b_\phi(x_t, \sigma_t \mid c)  \\
-        \sigma^2_\phi(x_t \mid c) & = \frac{\sigma_t^2}{1 + \sigma_t^2}
-
-    where :math:`\omega \in \mathbb{R}_+` is the classifier-free guidance strength.
-
     Arguments:
-        backbone: A noise conditional network :math:`b_\phi(x_t, \sigma_t \mid c)`.
+        backbone: A noise conditional network.
         schedule: A noise schedule. If :py:`None`, use
             :class:`azula.plugins.edm.ElucidatedSchedule` instead.
     """
@@ -145,69 +123,52 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
 
     def forward(
         self,
-        x_t: Tensor,
+        z_t: Tensor,
         t: Tensor,
         label: Optional[Tensor] = None,
-        omega: Optional[Tensor] = None,
         **kwargs,
     ) -> Gaussian:
         r"""
         Arguments:
-            x_t: A noisy tensor :math:`x_t`, with shape :math:`(*, S)`.
-            t: The time :math:`t`, with shape :math:`(*)`.
-            label: The class label :math:`c` as a one-hot vector.
-            omega: The classifier-free guidance strength :math:`\omega \in \mathbb{R}`.
-                If :py:`None`, classifier-free guidance is not applied.
+            z_t: A noisy tensor :math:`z_t`, with shape :math:`(B, 4, 64, 64)`.
+            t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
+            label: The class label :math:`c` as a one-hot vector, with shape :math:`(*, 1000)`.
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t \mid c), \Sigma_\phi(x_t \mid c))`.
+            The Gaussian :math:`\mathcal{N}(Z \mid \mu_\phi(z_t \mid c), \Sigma_\phi(z_t \mid c))`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
-        sigma_t, x_t = sigma_t / alpha_t, x_t / alpha_t
 
-        if label is None:
-            mean = self.backbone(x_t, sigma_t, **kwargs)
-        elif omega is None:
-            mean = self.backbone(x_t, sigma_t, class_labels=label, **kwargs)
-        else:
-            mean = self.backbone(x_t, sigma_t, **kwargs)
-            mean_cond = self.backbone(x_t, sigma_t, class_labels=label, **kwargs)
-            mean = mean + omega * (mean_cond - mean)
+        while alpha_t.ndim < z_t.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
-        while sigma_t.ndim < x_t.ndim:
-            sigma_t = sigma_t[..., None]
+        c_in = 1 / alpha_t
+        c_time = (sigma_t / alpha_t).reshape_as(t)
+        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
-        var = sigma_t**2 / (1 + sigma_t**2)
+        mean = self.backbone(c_in * z_t, c_time, class_labels=label, **kwargs)
+        var = c_var
 
         return Gaussian(mean=mean, var=var)
 
 
-def model_cards() -> Dict[str, SimpleNamespace]:
-    r"""Returns a key-card mapping of available pre-trained models."""
-
-    file = os.path.join(os.path.dirname(__file__), "cards.yml")
-
-    with open(file, mode="r") as f:
-        cards = yaml.safe_load(f)
-
-    return {key: SimpleNamespace(**card) for key, card in cards.items()}
-
-
-def load_model(key: str) -> Tuple[GaussianDenoiser, AutoEncoder]:
+def load_model(name: str) -> Tuple[GaussianDenoiser, AutoEncoder]:
     r"""Loads a pre-trained ELDM (or EDM2) latent denoiser.
 
     Arguments:
-        key: The pre-trained model key.
+        name: The pre-trained model name.
 
     Returns:
         A pre-trained latent denoiser and the corresponding auto-encoder.
     """
 
-    card = model_cards()[key]
+    from diffusers import AutoencoderKL
 
-    with open(download(card.url, card.hash), "rb") as f:
+    card = load_cards(__name__)[name]
+
+    with open(download(card.url, hash_prefix=card.hash), "rb") as f:
         content = pickle.load(f)
 
     denoiser = content["ema"]

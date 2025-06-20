@@ -77,8 +77,8 @@ class GaussianDenoiser(nn.Module):
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
         r"""
         Arguments:
-            x_t: A noisy tensor :math:`x_t`, with shape :math:`(*, S)`.
-            t: The time :math:`t`, with shape :math:`(*)`.
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
             kwargs: Optional keyword arguments.
 
         Returns:
@@ -93,8 +93,8 @@ class PreconditionedDenoiser(GaussianDenoiser):
 
     .. math::
         \mu_\phi(x_t) & = c_\mathrm{skip}(t) \, x_t +
-            c_\mathrm{out}(t) \, b_\phi(c_\mathrm{in}(t) \, x_t, c_\mathrm{noise}(t)) \\
-        \sigma^2_\phi(x_t) & = \frac{\sigma_x^2 \, \sigma_t^2}{\sigma_x^2 \, \alpha_t^2 + \sigma_t^2}
+            c_\mathrm{out}(t) \, b_\phi(c_\mathrm{in}(t) \, x_t, c_\mathrm{time}(t)) \\
+        \sigma^2_\phi(x_t) & = \frac{\sigma_t^2}{\alpha_t^2 + \sigma_t^2}
 
     The preconditioning coefficients are generalized to take the scale :math:`\alpha_t`
     into account.
@@ -103,27 +103,34 @@ class PreconditionedDenoiser(GaussianDenoiser):
         c_\mathrm{in}(t) & = \frac{1}{\sqrt{\alpha_t^2 + \sigma_t^2}} \\
         c_\mathrm{out}(t) & = \frac{\sigma_t}{\sqrt{\alpha_t^2 + \sigma_t^2}} \\
         c_\mathrm{skip}(t) & = \frac{\alpha_t}{\alpha_t^2 + \sigma_t^2} \\
-        c_\mathrm{noise}(t) & = \log \frac{\sigma_t}{\alpha_t}
+        c_\mathrm{time}(t) & = \log \frac{\sigma_t}{\alpha_t}
 
     References:
         | Elucidating the Design Space of Diffusion-Based Generative Models (Karras et al., 2022)
         | https://arxiv.org/abs/2206.00364
 
     Arguments:
-        backbone: A noise conditional network :math:`b_\phi(x_t, \sigma_t)`.
+        backbone: A noise/time conditional network :math:`b_\phi(x_t, t)`.
         schedule: A noise schedule.
-        var_x: The signal variance :math:`\sigma_x^2`.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: Schedule, var_x: Tensor = 1.0):
+    def __init__(self, backbone: nn.Module, schedule: Schedule):
         super().__init__()
 
         self.backbone = backbone
         self.schedule = schedule
 
-        self.register_buffer("var_x", torch.as_tensor(var_x))
-
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+        r"""
+        Arguments:
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t), \Sigma_\phi(x_t))`.
+        """
+
         alpha_t, sigma_t = self.schedule(t)
 
         while alpha_t.ndim < x_t.ndim:
@@ -132,18 +139,19 @@ class PreconditionedDenoiser(GaussianDenoiser):
         c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_out = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_skip = alpha_t / (alpha_t**2 + sigma_t**2)
-        c_noise = torch.log(sigma_t / alpha_t).reshape_as(t)
+        c_time = torch.log(sigma_t / alpha_t).reshape_as(t)
+        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
-        mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_noise, **kwargs)
-        var = self.var_x * sigma_t**2 / (self.var_x * alpha_t**2 + sigma_t**2)
+        mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_time, **kwargs)
+        var = c_var
 
         return Gaussian(mean=mean, var=var)
 
     def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
         r"""
         Arguments:
-            x: A clean tensor :math:`x`, with shape :math:`(*, S)`.
-            t: The time :math:`t`, with shape :math:`(*)`.
+            x: A clean tensor :math:`x`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`(B)`.
             kwargs: Optional keyword arguments.
 
         Returns:
@@ -151,7 +159,7 @@ class PreconditionedDenoiser(GaussianDenoiser):
 
             .. math:: \frac{1}{\sigma^2_\phi(x_t)} || \mu_\phi(x_t) - x ||^2
 
-            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(*, S)`.
+            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(B, *)`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
