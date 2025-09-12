@@ -537,7 +537,8 @@ class PCSampler(Sampler):
     Arguments:
         denoiser: A Gaussian denoiser.
         corrections: The number of corrector steps for each predictor step.
-        delta: The amplitude of corrector steps :math:`\delta \in [0,1]`.
+        leaps: The number of leaps per corrector step.
+        delta: The leap size :math:`\delta \in [0,1]`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
@@ -545,6 +546,7 @@ class PCSampler(Sampler):
         self,
         denoiser: GaussianDenoiser,
         corrections: int = 1,
+        leaps: int = 1,
         delta: float = 0.01,
         **kwargs,
     ):
@@ -552,6 +554,7 @@ class PCSampler(Sampler):
 
         self.denoiser = denoiser
         self.corrections = corrections
+        self.leaps = leaps
 
         self.register_buffer("delta", torch.as_tensor(delta))
 
@@ -559,17 +562,36 @@ class PCSampler(Sampler):
         alpha_s, sigma_s = self.denoiser.schedule(s)
         alpha_t, sigma_t = self.denoiser.schedule(t)
 
+        x_t_hat = self.denoiser(x_t, t, **kwargs).mean
+
         # Corrector
+        tau = self.delta * torch.sqrt(alpha_t**2 + sigma_t**2)
+
         for _ in range(self.corrections):
-            q_t = self.denoiser(x_t, t, **kwargs)
-            x_t = (
-                alpha_t * q_t.mean
-                + torch.sqrt(1 - self.delta) * (x_t - alpha_t * q_t.mean)
-                + torch.sqrt(self.delta) * sigma_t * torch.randn_like(x_t)
-            )
+            x = x_t
+            x_hat = x_t_hat
+            v = torch.randn_like(x)
+            a = (x - alpha_t * x_hat) / sigma_t**2
+
+            h = 1 / 2 * torch.sum(v * v)
+
+            for _ in range(self.leaps):
+                v_half = v - tau / 2 * a
+                x = x + tau * v_half
+                h = h - tau / 2 * torch.sum(v_half * a)
+                x_hat = self.denoiser(x, t).mean
+                a = (x - alpha_t * x_hat) / sigma_t**2
+                h = h - tau / 2 * torch.sum(v_half * a)
+                v = v_half - tau / 2 * a
+
+            h = h - 1 / 2 * torch.sum(v * v)
+
+            mask = torch.rand_like(h) < torch.exp(h)
+
+            x_t = torch.where(mask, x, x_t)
+            x_t_hat = torch.where(mask, x_hat, x_t_hat)
 
         # Predictor
-        q_t = self.denoiser(x_t, t, **kwargs)
-        x_s = alpha_s * q_t.mean + sigma_s / sigma_t * (x_t - alpha_t * q_t.mean)
+        x_s = alpha_s * x_t_hat + sigma_s / sigma_t * (x_t - alpha_t * x_t_hat)
 
         return x_s
