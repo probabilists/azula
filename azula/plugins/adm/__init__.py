@@ -31,6 +31,7 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint
 from typing import Optional, Sequence
 
 from azula.debug import RaiseMock
@@ -212,7 +213,7 @@ def make_model(
 
 # fmt: off
 def monkey_checkpoint(func, inputs, params, flag):
-    return func(*inputs)
+    return checkpoint(func, *inputs, use_reentrant=False)
 
 unet.checkpoint = monkey_checkpoint
 # fmt: on
