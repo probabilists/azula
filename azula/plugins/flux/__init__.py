@@ -33,7 +33,7 @@ from functools import cache
 from torch import Tensor
 from typing import Dict, Optional, Sequence, Tuple, Union
 
-from azula.denoise import Gaussian, GaussianDenoiser
+from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import skip_init
 from azula.noise import DecaySchedule, Schedule
 
@@ -153,7 +153,7 @@ class TextEncoder(nn.Module):
         }
 
 
-class FluxDenoiser(GaussianDenoiser):
+class FluxDenoiser(Denoiser):
     r"""Creates a Flux denoiser.
 
     Arguments:
@@ -202,7 +202,7 @@ class FluxDenoiser(GaussianDenoiser):
         prompt_t5: Tensor,
         guidance: Union[float, Tensor] = 4.0,
         **kwargs,
-    ) -> Gaussian:
+    ) -> DiracPosterior:
         r"""
         Arguments:
             z_t: A noisy tensor :math:`z_t`, with shape :math:`(B, H, W, 64)`.
@@ -213,7 +213,7 @@ class FluxDenoiser(GaussianDenoiser):
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(Z \mid \mu_\phi(z_t \mid y), \Sigma_\phi(z_t \mid y)`.
+            The Dirac delta :math:`\delta(Z - \mu_\phi(z_t \mid y))`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
@@ -225,7 +225,6 @@ class FluxDenoiser(GaussianDenoiser):
         c_out = -sigma_t / (alpha_t + sigma_t)
         c_skip = 1 / (alpha_t + sigma_t)
         c_time = (sigma_t / (alpha_t + sigma_t)).flatten()
-        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         B, H, W, C = z_t.shape
         _, L, D = prompt_t5.shape
@@ -250,15 +249,14 @@ class FluxDenoiser(GaussianDenoiser):
         ).sample.reshape_as(z_t)
 
         mean = c_skip * z_t + c_out * output.to(z_t)
-        var = c_var
 
-        return Gaussian(mean=mean, var=var)
+        return DiracPosterior(mean=mean)
 
 
 def load_model(
     name: str = "flux_1_dev",
     **kwargs,
-) -> Tuple[GaussianDenoiser, AutoEncoder, TextEncoder]:
+) -> Tuple[Denoiser, AutoEncoder, TextEncoder]:
     r"""Loads a pre-trained Flux latent denoiser.
 
     Arguments:

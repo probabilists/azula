@@ -34,7 +34,7 @@ import torch.nn as nn
 from torch import Tensor
 from typing import Optional, Tuple
 
-from azula.denoise import Gaussian, GaussianDenoiser
+from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
 from azula.noise import Schedule
 
@@ -74,7 +74,7 @@ class ElucidatedSchedule(Schedule):
         return self.alpha(t), self.sigma(t)
 
 
-class ElucidatedDenoiser(GaussianDenoiser):
+class ElucidatedDenoiser(Denoiser):
     r"""Creates an elucidated denoiser.
 
     Arguments:
@@ -98,7 +98,7 @@ class ElucidatedDenoiser(GaussianDenoiser):
         t: Tensor,
         label: Optional[Tensor] = None,
         **kwargs,
-    ) -> Gaussian:
+    ) -> DiracPosterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, 3, H, W)`.
@@ -107,7 +107,7 @@ class ElucidatedDenoiser(GaussianDenoiser):
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t \mid c), \Sigma_\phi(x_t \mid c))`.
+            The Dirac delta :math:`\delta(X - \mu_\phi(x_t \mid c))`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
@@ -117,15 +117,13 @@ class ElucidatedDenoiser(GaussianDenoiser):
 
         c_in = 1 / alpha_t
         c_time = (sigma_t / alpha_t).reshape_as(t)
-        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         mean = self.backbone(c_in * x_t, c_time, class_labels=label, **kwargs)
-        var = c_var
 
-        return Gaussian(mean=mean, var=var)
+        return DiracPosterior(mean=mean)
 
 
-def load_model(name: str) -> GaussianDenoiser:
+def load_model(name: str) -> Denoiser:
     r"""Loads a pre-trained EDM denoiser.
 
     Arguments:

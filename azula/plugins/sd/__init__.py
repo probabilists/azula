@@ -31,7 +31,7 @@ import torch.nn as nn
 from torch import Tensor
 from typing import Dict, Optional, Sequence, Tuple, Union
 
-from azula.denoise import Gaussian, GaussianDenoiser
+from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import skip_init
 from azula.noise import Schedule, VPSchedule
 
@@ -137,7 +137,7 @@ class TextEncoder(nn.Module):
         }
 
 
-class StableDenoiser(GaussianDenoiser):
+class StableDenoiser(Denoiser):
     r"""Creates a stable denoiser.
 
     Arguments:
@@ -176,7 +176,7 @@ class StableDenoiser(GaussianDenoiser):
         t: Tensor,
         prompt_embeds: Tensor,
         **kwargs,
-    ) -> Gaussian:
+    ) -> DiracPosterior:
         r"""
         Arguments:
             z_t: A noisy tensor :math:`z_t`, with shape :math:`(B, C, H, W)`.
@@ -205,7 +205,6 @@ class StableDenoiser(GaussianDenoiser):
         c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_time = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_time = torch.searchsorted(self.discrete, c_time.flatten())
-        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         B, _, _, _ = z_t.shape
         _, L, D = prompt_embeds.shape
@@ -220,15 +219,14 @@ class StableDenoiser(GaussianDenoiser):
         ).sample
 
         mean = c_skip * z_t + c_out * output.to(z_t)
-        var = c_var
 
-        return Gaussian(mean=mean, var=var)
+        return DiracPosterior(mean=mean)
 
 
 def load_model(
     name: str,
     **kwargs,
-) -> Tuple[GaussianDenoiser, AutoEncoder, TextEncoder]:
+) -> Tuple[Denoiser, AutoEncoder, TextEncoder]:
     r"""Loads a pre-trained stable latent denoiser.
 
     Arguments:

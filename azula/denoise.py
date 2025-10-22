@@ -18,11 +18,17 @@ divergence
         \big[ \mathrm{KL}( p(X \mid x_t) \parallel q_\phi(X \mid x_t) ) \big] \\
     = \, & \arg \min_\phi \mathbb{E}_{x, x_t \,\sim\, p(X, X_t)}
         \big[ -\log q_\phi(x \mid x_t) \big] \, .
+
+For most use cases, it is enough to estimate the mean :math:`\mathbb{E}[X \mid x_t]` of
+the posterior :math:`p(X \mid x_t)`, in which case :math:`q_\phi(X \mid x_t)` should
+have mean :math:`\mu_\phi(x_t) \approx \mathbb{E}[X \mid x_t]`.
 """
 
 __all__ = [
-    "Gaussian",
-    "GaussianDenoiser",
+    "Posterior",
+    "DiracPosterior",
+    "GaussianPosterior",
+    "Denoiser",
     "PreconditionedDenoiser",
 ]
 
@@ -31,15 +37,32 @@ import math
 import torch
 import torch.nn as nn
 
-from dataclasses import dataclass
 from torch import Tensor
 
 from .noise import Schedule
 
 
-@dataclass
-class Gaussian:
-    r"""Creates a Gaussian distribution :math:`\mathcal{N}(\mu, \sigma^2)`.
+class Posterior(abc.ABC):
+    r"""Abstract posterior :math:`q_\phi(X \mid x_t)`."""
+
+    mean: Tensor
+
+
+class DiracPosterior(Posterior):
+    r"""Creates a Dirac delta posterior :math:`\delta(X - \mu)`.
+
+    Arguments:
+        mean: The mean :math:`\mu`, with shape :math:`(*)`.
+    """
+
+    mean: Tensor
+
+    def __init__(self, mean: Tensor):
+        self.mean = mean
+
+
+class GaussianPosterior(Posterior):
+    r"""Creates a Gaussian posterior :math:`\mathcal{N}(X \mid \mu, \sigma^2)`.
 
     Arguments:
         mean: The mean :math:`\mu`, with shape :math:`(*)`.
@@ -48,6 +71,10 @@ class Gaussian:
 
     mean: Tensor
     var: Tensor
+
+    def __init__(self, mean: Tensor, var: Tensor):
+        self.mean = mean
+        self.var = var
 
     def log_prob(self, x: Tensor) -> Tensor:
         r"""
@@ -62,19 +89,13 @@ class Gaussian:
         return -((x - self.mean) ** 2 / self.var + torch.log(self.var) + math.log(2 * math.pi)) / 2
 
 
-class GaussianDenoiser(nn.Module):
-    r"""Abstract Gaussian denoiser module.
-
-    .. math:: q_\phi(X \mid X_t) = \mathcal{N}(X \mid \mu_\phi(X_t), \Sigma_\phi(X_t))
-
-    The optimal Gaussian denoiser estimates the mean :math:`\mathbb{E}[X \mid X_t]` and
-    covariance :math:`\mathbb{V}[X \mid X_t]` of the posterior :math:`p(X \mid X_t)`.
-    """
+class Denoiser(nn.Module):
+    r"""Abstract denoiser module."""
 
     schedule: Schedule
 
     @abc.abstractmethod
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Posterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
@@ -82,13 +103,13 @@ class GaussianDenoiser(nn.Module):
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t), \Sigma_\phi(x_t))`.
+            The posterior :math:`q_\phi(X \mid x_t)`.
         """
 
         pass
 
 
-class PreconditionedDenoiser(GaussianDenoiser):
+class PreconditionedDenoiser(Denoiser):
     r"""Creates a Gaussian denoiser with EDM-style preconditioning.
 
     .. math::
@@ -120,7 +141,7 @@ class PreconditionedDenoiser(GaussianDenoiser):
         self.backbone = backbone
         self.schedule = schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> GaussianPosterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
@@ -145,7 +166,7 @@ class PreconditionedDenoiser(GaussianDenoiser):
         mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_time, **kwargs)
         var = c_var
 
-        return Gaussian(mean=mean, var=var)
+        return GaussianPosterior(mean=mean, var=var)
 
     def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
         r"""

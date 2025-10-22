@@ -14,7 +14,7 @@ import torch
 from torch import Tensor
 from typing import Callable
 
-from ..denoise import GaussianDenoiser
+from ..denoise import Denoiser
 from ..sample import DDIMSampler
 
 
@@ -22,7 +22,7 @@ class PGDMSampler(DDIMSampler):
     r"""Creates a PGDM sampler.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`.
         A: The forward operator :math:`x \mapsto A(x)`.
         A_inv: The pseudo-inverse operator :math:`y \mapsto A^\dagger(y)`,
@@ -32,7 +32,7 @@ class PGDMSampler(DDIMSampler):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
         A_inv: Callable[[Tensor], Tensor],

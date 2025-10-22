@@ -12,17 +12,17 @@ from functools import partial
 from torch import Tensor
 from typing import Callable
 
-from ..denoise import Gaussian, GaussianDenoiser
+from ..denoise import Denoiser, DiracPosterior
 from ..linalg.covariance import Covariance, IsotropicCovariance
 from ..linalg.solve import cg, gmres
 from ..noise import Schedule
 
 
-class JFPSDenoiser(GaussianDenoiser):
+class JFPSDenoiser(Denoiser):
     r"""Creates a JFPS denoiser module.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`, with shape :math:`(*, D)`.
         A: The forward operator :math:`x \mapsto A(x)`.
         cov_y: The noise covariance :math:`\Sigma_y`.
@@ -33,7 +33,7 @@ class JFPSDenoiser(GaussianDenoiser):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
         cov_y: Covariance,
@@ -62,7 +62,7 @@ class JFPSDenoiser(GaussianDenoiser):
     def schedule(self) -> Schedule:
         return self.denoiser.schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         alpha_t, sigma_t = self.schedule(t)
 
         q = self.denoiser(x_t, t, **kwargs)
@@ -88,7 +88,4 @@ class JFPSDenoiser(GaussianDenoiser):
         grad = torch.autograd.grad(y_hat, x_hat, grad)[0]
         grad = cov_x(grad)
 
-        return Gaussian(
-            mean=x_hat + grad,
-            var=q.var,
-        )
+        return DiracPosterior(mean=x_hat + grad)

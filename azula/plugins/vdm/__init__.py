@@ -29,7 +29,7 @@ from torch import Tensor
 from typing import Optional
 
 from azula.debug import RaiseMock
-from azula.denoise import Gaussian, GaussianDenoiser
+from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
 from azula.nn.utils import skip_init
 from azula.noise import Schedule, VPSchedule
@@ -42,7 +42,7 @@ except ImportError as e:
     crowson = RaiseMock(name="diffusion", error=e)
 
 
-class VelocityDenoiser(GaussianDenoiser):
+class VelocityDenoiser(Denoiser):
     r"""Creates a velocity denoiser.
 
     Arguments:
@@ -65,7 +65,7 @@ class VelocityDenoiser(GaussianDenoiser):
         else:
             self.schedule = schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         alpha_t, sigma_t = self.schedule(t)
 
         while alpha_t.ndim < x_t.ndim:
@@ -75,15 +75,13 @@ class VelocityDenoiser(GaussianDenoiser):
         c_out = -sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_skip = alpha_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_time = crowson.utils.alpha_sigma_to_t(alpha_t, sigma_t).flatten()
-        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_time, **kwargs)
-        var = c_var
 
-        return Gaussian(mean=mean, var=var)
+        return DiracPosterior(mean=mean)
 
 
-def load_model(name: str, **kwargs) -> GaussianDenoiser:
+def load_model(name: str, **kwargs) -> Denoiser:
     r"""Loads a pre-trained VDM denoiser.
 
     Arguments:
@@ -111,7 +109,7 @@ def load_model(name: str, **kwargs) -> GaussianDenoiser:
 
 def make_model(
     model: str = "imagenet_128",
-) -> GaussianDenoiser:
+) -> Denoiser:
     r"""Initializes a VDM denoiser."""
 
     backbone = crowson.models.get_model(model)()

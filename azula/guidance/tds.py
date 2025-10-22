@@ -16,7 +16,7 @@ from torch import Tensor
 from torch.distributions import Normal
 from typing import Callable
 
-from ..denoise import Gaussian, GaussianDenoiser
+from ..denoise import Denoiser
 from ..sample import Sampler
 
 
@@ -24,15 +24,15 @@ class TDSSampler(Sampler):
     r"""Creates a TDS sampler.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         twist: A twisting function $\log p(y | \hat{x}, t)$.
         kwargs: Keyword arguments passed to :class:`azula.sample.Sampler`.
     """
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
-        twist: Callable[[Gaussian], Tensor],
+        denoiser: Denoiser,
+        twist: Callable[[Tensor], Tensor],
         **kwargs,
     ):
         super().__init__(**kwargs)

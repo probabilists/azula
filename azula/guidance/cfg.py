@@ -12,18 +12,18 @@ __all__ = [
 from torch import Tensor
 from typing import Any, Dict, Union
 
-from ..denoise import Gaussian, GaussianDenoiser
+from ..denoise import Denoiser, DiracPosterior
 from ..noise import Schedule
 
 
-class CFGDenoiser(GaussianDenoiser):
+class CFGDenoiser(Denoiser):
     r"""Creates a CFG denoiser module.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser):
+    def __init__(self, denoiser: Denoiser):
         super().__init__()
 
         self.denoiser = denoiser
@@ -40,7 +40,7 @@ class CFGDenoiser(GaussianDenoiser):
         negative: Dict[str, Any] = {},  # noqa: B006
         guidance: Union[float, Tensor] = 1.0,
         **kwargs,
-    ) -> Gaussian:
+    ) -> DiracPosterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
@@ -51,13 +51,15 @@ class CFGDenoiser(GaussianDenoiser):
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t \mid c), \Sigma_\phi(x_t \mid c))`.
+            The Dirac delta :math:`\delta(X - \mu)` where
+
+            .. math:: \mu = (1 + \omega) \, \mu_\phi(x_t \mid c_+)
+                - \omega \, \mu_\phi(x_t \mid c_-) \, .
         """
 
         q_pos = self.denoiser(x_t, t, **positive, **kwargs)
         q_neg = self.denoiser(x_t, t, **negative, **kwargs)
 
-        return Gaussian(
+        return DiracPosterior(
             mean=q_pos.mean + guidance * (q_pos.mean - q_neg.mean),
-            var=q_pos.var,
         )

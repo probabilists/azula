@@ -41,7 +41,7 @@ import torch.nn as nn
 from torch import Tensor
 from typing import Optional, Tuple
 
-from azula.denoise import Gaussian, GaussianDenoiser
+from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
 from azula.noise import Schedule
 
@@ -102,7 +102,7 @@ class AutoEncoder(nn.Module):
         return x
 
 
-class ElucidatedLatentDenoiser(GaussianDenoiser):
+class ElucidatedLatentDenoiser(Denoiser):
     r"""Creates an elucidated latent denoiser.
 
     Arguments:
@@ -131,7 +131,7 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
         t: Tensor,
         label: Optional[Tensor] = None,
         **kwargs,
-    ) -> Gaussian:
+    ) -> DiracPosterior:
         r"""
         Arguments:
             z_t: A noisy tensor :math:`z_t`, with shape :math:`(B, 4, 64, 64)`.
@@ -140,7 +140,7 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(Z \mid \mu_\phi(z_t \mid c), \Sigma_\phi(z_t \mid c))`.
+            The Dirac delta :math:`\delta(Z - \mu_\phi(z_t \mid c))`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
@@ -150,15 +150,13 @@ class ElucidatedLatentDenoiser(GaussianDenoiser):
 
         c_in = 1 / alpha_t
         c_time = (sigma_t / alpha_t).reshape_as(t)
-        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         mean = self.backbone(c_in * z_t, c_time, class_labels=label, **kwargs)
-        var = c_var
 
-        return Gaussian(mean=mean, var=var)
+        return DiracPosterior(mean=mean)
 
 
-def load_model(name: str) -> Tuple[GaussianDenoiser, AutoEncoder]:
+def load_model(name: str) -> Tuple[Denoiser, AutoEncoder]:
     r"""Loads a pre-trained ELDM (or EDM2) latent denoiser.
 
     Arguments:

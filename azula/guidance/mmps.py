@@ -15,17 +15,17 @@ from functools import partial
 from torch import Tensor
 from typing import Callable, Union
 
-from ..denoise import Gaussian, GaussianDenoiser
+from ..denoise import Denoiser, DiracPosterior
 from ..linalg.covariance import Covariance, DiagonalCovariance
 from ..linalg.solve import cg, gmres
 from ..noise import Schedule
 
 
-class MMPSDenoiser(GaussianDenoiser):
+class MMPSDenoiser(Denoiser):
     r"""Creates a MMPS denoiser module.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`, with shape :math:`(*, D)`.
         A: The forward operator :math:`x \mapsto A(x)`.
         cov_y: The noise covariance :math:`\Sigma_y`. If `cov_y` is a tensor, it is
@@ -37,7 +37,7 @@ class MMPSDenoiser(GaussianDenoiser):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
         cov_y: Union[Tensor, Covariance],
@@ -68,7 +68,7 @@ class MMPSDenoiser(GaussianDenoiser):
     def schedule(self) -> Schedule:
         return self.denoiser.schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         alpha_t, sigma_t = self.schedule(t)
         gamma_t = sigma_t**2 / alpha_t
 
@@ -95,7 +95,4 @@ class MMPSDenoiser(GaussianDenoiser):
         grad = self.solve(A=cov_y, b=grad)
         grad = torch.autograd.grad(y_hat, x_t, grad)[0]
 
-        return Gaussian(
-            mean=x_hat + gamma_t * grad,
-            var=q.var,
-        )
+        return DiracPosterior(mean=x_hat + gamma_t * grad)

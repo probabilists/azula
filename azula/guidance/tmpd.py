@@ -14,15 +14,15 @@ import torch
 from torch import Tensor
 from typing import Callable
 
-from ..denoise import Gaussian, GaussianDenoiser
+from ..denoise import Denoiser, DiracPosterior
 from ..noise import Schedule
 
 
-class TMPDenoiser(GaussianDenoiser):
+class TMPDenoiser(Denoiser):
     r"""Creates a TMPD denoiser module.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y \sim \mathcal{N}(A x, \Sigma_y)`.
         A: The forward operator :math:`x \mapsto A x`.
         var_y: The noise variance :math:`\Sigma_y`.
@@ -30,7 +30,7 @@ class TMPDenoiser(GaussianDenoiser):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
         var_y: Tensor,
@@ -48,7 +48,7 @@ class TMPDenoiser(GaussianDenoiser):
     def schedule(self) -> Schedule:
         return self.denoiser.schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         alpha_t, sigma_t = self.schedule(t)
         gamma_t = sigma_t**2 / alpha_t
 
@@ -70,7 +70,4 @@ class TMPDenoiser(GaussianDenoiser):
         grad = (self.y - y_hat) / (self.var_y + var_Ax)
         grad = torch.autograd.grad(y_hat, x_t, grad)[0]
 
-        return Gaussian(
-            mean=x_hat + gamma_t * grad,
-            var=q.var,
-        )
+        return DiracPosterior(mean=x_hat + gamma_t * grad)

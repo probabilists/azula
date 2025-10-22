@@ -13,7 +13,7 @@ import torch
 
 from torch import BoolTensor, Tensor
 
-from ..denoise import GaussianDenoiser
+from ..denoise import Denoiser
 from ..sample import DDIMSampler
 
 
@@ -21,7 +21,7 @@ class RePaintSampler(DDIMSampler):
     r"""Creates a RePaint sampler.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y = m \odot x`.
         mask: The observation mask :math:`m`.
         iterations: The number of RePaint iterations per step.
@@ -30,7 +30,7 @@ class RePaintSampler(DDIMSampler):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         y: Tensor,
         mask: BoolTensor,
         iterations: int = 3,

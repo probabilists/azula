@@ -15,16 +15,16 @@ from functools import partial
 from torch import Tensor
 from typing import Callable
 
-from ..denoise import Gaussian, GaussianDenoiser
+from ..denoise import Denoiser, DiracPosterior
 from ..linalg.solve import cg, gmres
 from ..noise import Schedule
 
 
-class DiffPIRDenoiser(GaussianDenoiser):
+class DiffPIRDenoiser(Denoiser):
     r"""Creates a DiffPIR denoiser module.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y \sim \mathcal{N}(A x, \Sigma_y)`, with shape :math:`(*, D)`.
         A: The forward operator :math:`x \mapsto A x`.
         var_y: The noise variance :math:`\Sigma_y`.
@@ -35,7 +35,7 @@ class DiffPIRDenoiser(GaussianDenoiser):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
         var_y: Tensor,
@@ -64,7 +64,7 @@ class DiffPIRDenoiser(GaussianDenoiser):
     def schedule(self) -> Schedule:
         return self.denoiser.schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Gaussian:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         alpha_t, sigma_t = self.schedule(t)
         rho_t = (sigma_t / alpha_t) ** 2
 
@@ -84,7 +84,4 @@ class DiffPIRDenoiser(GaussianDenoiser):
         grad = At(grad)
         grad = self.solve(A=AtA_I, b=grad)
 
-        return Gaussian(
-            mean=x_hat + grad,
-            var=q.var,
-        )
+        return DiracPosterior(mean=x_hat + grad)

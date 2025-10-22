@@ -14,7 +14,7 @@ import torch
 from torch import Tensor
 from typing import Callable
 
-from ..denoise import GaussianDenoiser
+from ..denoise import Denoiser
 from ..sample import Sampler
 
 
@@ -22,7 +22,7 @@ class DPSSampler(Sampler):
     r"""Creates a DPS sampler.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`.
         A: The forward operator :math:`x \mapsto A(x)`.
         zeta: The guidance strength :math:`\zeta`.
@@ -31,7 +31,7 @@ class DPSSampler(Sampler):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
         zeta: float = 1.0,

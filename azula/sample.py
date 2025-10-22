@@ -40,7 +40,7 @@ import torch.nn as nn
 from torch import Tensor
 from typing import Optional, Sequence
 
-from .denoise import GaussianDenoiser
+from .denoise import Denoiser
 
 
 class Sampler(nn.Module):
@@ -53,7 +53,7 @@ class Sampler(nn.Module):
             :math:`t_{i} - t_{i-1}` is constant.
     """
 
-    denoiser: GaussianDenoiser
+    denoiser: Denoiser
 
     def __init__(
         self,
@@ -170,11 +170,11 @@ class DDPMSampler(Sampler):
         | https://arxiv.org/abs/2006.11239
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, **kwargs):
+    def __init__(self, denoiser: Denoiser, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -211,14 +211,14 @@ class DDIMSampler(Sampler):
         | https://arxiv.org/abs/2010.02502
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         eta: The stochasticity hyperparameter :math:`\eta \in \mathbb{R}_+`.
             If :math:`\eta = 1`, :class:`DDIMSampler` is equivalent to :class:`DDPMSampler`.
             If :math:`\eta = 0`, :class:`DDIMSampler` is equivalent to :class:`EulerSampler`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, eta: float = 0.0, **kwargs):
+    def __init__(self, denoiser: Denoiser, eta: float = 0.0, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -259,11 +259,11 @@ class EulerSampler(Sampler):
         https://wikipedia.org/wiki/Euler_method
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, **kwargs):
+    def __init__(self, denoiser: Denoiser, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -298,11 +298,11 @@ class HeunSampler(Sampler):
         https://wikipedia.org/wiki/Heun%27s_method
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, **kwargs):
+    def __init__(self, denoiser: Denoiser, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -355,12 +355,12 @@ class ABSampler(Sampler):
         https://wikipedia.org/wiki/Linear_multistep_method
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         order: The order :math:`n` of the multi-step method.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, order: int = 3, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 3, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -457,12 +457,12 @@ class EABSampler(Sampler):
         | https://arxiv.org/abs/2206.00927
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         order: The order :math:`n` of the multi-step method.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: GaussianDenoiser, order: int = 3, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 3, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -535,7 +535,7 @@ class PCSampler(Sampler):
     r"""Creates a predictor-corrector (PC) sampler.
 
     Arguments:
-        denoiser: A Gaussian denoiser.
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         corrections: The number of corrector steps for each predictor step.
         delta: The amplitude of corrector steps :math:`\delta \in [0,1]`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
@@ -543,7 +543,7 @@ class PCSampler(Sampler):
 
     def __init__(
         self,
-        denoiser: GaussianDenoiser,
+        denoiser: Denoiser,
         corrections: int = 1,
         delta: float = 0.01,
         **kwargs,

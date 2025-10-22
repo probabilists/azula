@@ -35,7 +35,7 @@ from torch.utils.checkpoint import checkpoint
 from typing import Optional, Sequence
 
 from azula.debug import RaiseMock
-from azula.denoise import Gaussian, GaussianDenoiser
+from azula.denoise import Denoiser, GaussianPosterior
 from azula.hub import download
 from azula.nn.utils import skip_init
 from azula.noise import Schedule, VPSchedule
@@ -48,7 +48,7 @@ except ImportError as e:
     unet = RaiseMock(name="guided_diffusion.unet", error=e)
 
 
-class AblatedDenoiser(GaussianDenoiser):
+class AblatedDenoiser(Denoiser):
     r"""Creates an ablated denoiser.
 
     Arguments:
@@ -57,7 +57,7 @@ class AblatedDenoiser(GaussianDenoiser):
             instead.
         clip_mean: Whether the mean :math:`\mu_\phi(x_t)` is clipped to :math:`[-1, 1]`
             or not during evaluation.
-        learn_var: Whether the variance :math:`\Sigma_\phi(x_t)` is learned or not.
+        learn_var: Whether the variance :math:`\sigma^2_\phi(x_t)` is learned or not.
             For pre-trained models, the learned variance is indicative, but inexact.
     """
 
@@ -104,7 +104,7 @@ class AblatedDenoiser(GaussianDenoiser):
         t: Tensor,
         label: Optional[Tensor] = None,
         **kwargs,
-    ) -> Gaussian:
+    ) -> GaussianPosterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, 3, H, W)`.
@@ -113,7 +113,7 @@ class AblatedDenoiser(GaussianDenoiser):
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t \mid c), \Sigma_\phi(x_t \mid c))`.
+            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t \mid c), \sigma^2_\phi(x_t \mid c))`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
@@ -141,10 +141,10 @@ class AblatedDenoiser(GaussianDenoiser):
         if not self.training and self.clip_mean:
             mean = torch.clip(mean, min=-1.0, max=1.0)
 
-        return Gaussian(mean=mean, var=var)
+        return GaussianPosterior(mean=mean, var=var)
 
 
-def load_model(name: str, **kwargs) -> GaussianDenoiser:
+def load_model(name: str, **kwargs) -> Denoiser:
     r"""Loads a pre-trained ADM denoiser.
 
     Arguments:
@@ -186,7 +186,7 @@ def make_model(
     num_channels: int = 128,
     num_classes: int = None,
     **kwargs,
-) -> GaussianDenoiser:
+) -> Denoiser:
     r"""Initializes an ADM denoiser."""
 
     attention_resolutions = {image_size // r for r in attention_resolutions}

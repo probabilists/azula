@@ -8,7 +8,7 @@ from torch import Tensor
 from torch.distributions import Normal
 from typing import Any, Sequence
 
-from azula.denoise import Gaussian, PreconditionedDenoiser
+from azula.denoise import GaussianPosterior, PreconditionedDenoiser
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
 
@@ -42,7 +42,7 @@ class Dummy(nn.Module):
 @pytest.mark.parametrize("isotropic", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
 @pytest.mark.parametrize("channels", [5])
-def test_Gaussian(isotropic: bool, batch: Sequence[int], channels: int):
+def test_GaussianPosterior(isotropic: bool, batch: Sequence[int], channels: int):
     mean = torch.randn(*batch, channels)
 
     if isotropic:
@@ -52,7 +52,7 @@ def test_Gaussian(isotropic: bool, batch: Sequence[int], channels: int):
 
     x = torch.normal(mean, std)
 
-    log_q = Gaussian(mean, std**2).log_prob(x)
+    log_q = GaussianPosterior(mean, std**2).log_prob(x)
     log_p = Normal(mean, std).log_prob(x)
 
     assert log_q.shape == (*batch, channels)
@@ -77,7 +77,7 @@ def test_PreconditionedDenoiser(with_label: bool, batch: Sequence[int], channels
     else:
         q = denoiser(x, t)
 
-    assert isinstance(q, Gaussian)
+    assert isinstance(q, GaussianPosterior)
     assert q.mean.shape == x.shape
     assert q.var.expand(x.shape).shape == x.shape
 
