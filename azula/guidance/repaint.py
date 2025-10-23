@@ -51,13 +51,12 @@ class RePaintSampler(DDIMSampler):
             x_s = super().step(x_t, t, s, **kwargs)
             x_s = torch.where(
                 self.mask,
-                torch.normal(alpha_s * self.y, sigma_s),
+                alpha_s * self.y + sigma_s * torch.randn_like(self.y),
                 x_s,
             )
 
-            x_t = alpha_t * torch.normal(
-                x_s / alpha_s,
-                torch.sqrt((sigma_t / alpha_t) ** 2 - (sigma_s / alpha_s) ** 2),
-            )
+            x_t = alpha_t / alpha_s * x_s + alpha_t * torch.sqrt(
+                (sigma_t / alpha_t) ** 2 - (sigma_s / alpha_s) ** 2
+            ) * torch.randn_like(x_s)
 
         return x_s

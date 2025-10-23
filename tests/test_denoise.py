@@ -51,7 +51,7 @@ def test_GaussianPosterior(isotropic: bool, batch: Sequence[int], channels: int)
     else:
         std = torch.rand(*batch, channels) + 1e-3
 
-    x = torch.normal(mean, std)
+    x = mean + std * torch.randn_like(mean)
 
     log_q = GaussianPosterior(mean, std**2).log_prob(x)
     log_p = Normal(mean, std).log_prob(x)

@@ -79,7 +79,7 @@ class AutoEncoder(nn.Module):
         dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
 
         q_z_x = self.vae.encode(x.to(**dtype)).latent_dist
-        z = torch.normal(q_z_x.mean, q_z_x.std)
+        z = q_z_x.mean + q_z_x.std * torch.randn_like(q_z_x.mean)
         z = z * self.scale + self.shift
 
         return z
