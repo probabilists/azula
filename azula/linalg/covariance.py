@@ -25,9 +25,15 @@ class Covariance(abc.ABC):
     def __add__(self, other: Covariance) -> Covariance:
         pass
 
+    def __radd__(self, other: Covariance) -> Covariance:
+        return self.__add__(other)
+
     @abc.abstractmethod
     def __mul__(self, other: Covariance) -> Covariance:
         pass
+
+    def __rmul__(self, other: Covariance) -> Covariance:
+        return self.__mul__(other)
 
     @abc.abstractmethod
     def __matmul__(self, x: Tensor) -> Tensor:
@@ -64,6 +70,7 @@ class IsotropicCovariance(Covariance):
         self.lmbda = lmbda.reshape(())
 
     @classmethod
+    @torch.no_grad()
     def from_data(self, X: Tensor) -> IsotropicCovariance:
         return IsotropicCovariance(X.var())
 
@@ -96,6 +103,7 @@ class DiagonalCovariance(Covariance):
         self.D = D
 
     @classmethod
+    @torch.no_grad()
     def from_data(self, X: Tensor) -> DiagonalCovariance:
         return DiagonalCovariance(X.var(dim=0))
 
@@ -139,6 +147,7 @@ class DPLRCovariance(Covariance):
             self.S = S
 
     @classmethod
+    @torch.no_grad()
     def from_data(self, X: Tensor, rank: int = 1) -> DPLRCovariance:
         samples, *shape = X.shape
         features = math.prod(shape)
@@ -151,7 +160,11 @@ class DPLRCovariance(Covariance):
         else:
             C = torch.einsum("ki,kj->ij", X, X) / samples
 
-        L, Q = torch.lobpcg(C, k=rank)
+        if 3 * rank < min(samples, features):
+            L, Q = torch.lobpcg(C, k=rank)
+        else:
+            L, Q = torch.linalg.eigh(C)
+            L, Q = L[-rank:], Q[:, -rank:]
 
         if rank < features:
             D = (torch.trace(C) - torch.sum(L)) / (features - rank)
@@ -228,6 +241,7 @@ class PreconditionedCovariance(Covariance):
         self.Qs = tuple(Qs)
 
     @classmethod
+    @torch.no_grad()
     def from_data(self, X: Tensor, rank: int = 0) -> PreconditionedCovariance:
         Qs = []
 

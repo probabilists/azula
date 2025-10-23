@@ -38,7 +38,9 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
+from typing import Callable, Self
 
+from .linalg.covariance import Covariance, IsotropicCovariance
 from .noise import Schedule
 
 
@@ -107,6 +109,66 @@ class Denoiser(nn.Module):
         """
 
         pass
+
+
+class GaussianDenoiser(Denoiser):
+    r"""Creates an analytical Gaussian denoiser.
+
+    Let :math:`X \sim \mathcal{N}(\mu_x, \Sigma_x)` and :math:`X_t \sim \mathcal{N}(X,
+    \Sigma_t)`, then
+
+    .. math:: X \mid X_t \sim \mathcal{N} \left( \bar{\mu}, \bar{\Sigma} \right)
+
+    with
+
+    .. math::
+        \bar{\mu} & = \mu_x + \Sigma_x \left( \Sigma_x + \Sigma_t \right)^{-1} (X_t - \mu_x) \\
+        \bar{\Sigma} & = \left( \Sigma_x^{-1} + \Sigma_t^{-1} \right)^{-1}
+
+    References:
+        | Bayesian Filtering and Smoothing (Särkkä, 2013)
+        | http://www.cambridge.org/9781108926645
+
+    Arguments:
+        mean: The mean vector :math:`\mu_x`, with shape :math:`(N_1, ..., N_d)`.
+        cov: The covariance matrix :math:`\Sigma_x`, with shape
+            :math:`(N_1, N_1, ..., N_d, N_d)`.
+    """
+
+    def __init__(self, mean: Tensor, cov: Covariance, schedule: Schedule):
+        super().__init__()
+
+        self.mean = mean
+        self.cov = cov
+        self.schedule = schedule
+
+    def _apply(self, fn: Callable, recurse: bool = True) -> Self:
+        super()._apply(fn, recurse=recurse)
+
+        self.mean = fn(self.mean)
+        self.cov = fn(self.cov)
+
+        return self
+
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
+        r"""
+        Arguments:
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`()`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            The Dirac delta :math:`\delta(X - \bar{\mu})`.
+        """
+
+        alpha_t, sigma_t = self.schedule(t)
+
+        cov_t = IsotropicCovariance(sigma_t**2)
+        cov_inv = (self.cov + cov_t).inv
+
+        mean = self.mean + self.cov(cov_inv(x_t / alpha_t - self.mean))
+
+        return DiracPosterior(mean=mean)
 
 
 class PreconditionedDenoiser(Denoiser):

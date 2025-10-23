@@ -8,7 +8,8 @@ from torch import Tensor
 from torch.distributions import Normal
 from typing import Any, Sequence
 
-from azula.denoise import GaussianPosterior, PreconditionedDenoiser
+from azula.denoise import GaussianDenoiser, GaussianPosterior, Posterior, PreconditionedDenoiser
+from azula.linalg.covariance import DPLRCovariance, PreconditionedCovariance
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
 
@@ -57,6 +58,30 @@ def test_GaussianPosterior(isotropic: bool, batch: Sequence[int], channels: int)
 
     assert log_q.shape == (*batch, channels)
     assert torch.allclose(log_q, log_p, atol=1e-6)
+
+
+@pytest.mark.parametrize("cov", ["dplr", "precond"])
+@pytest.mark.parametrize("batch", [(), (64,)])
+@pytest.mark.parametrize("channels", [5])
+def test_GaussianDenoiser(cov: str, batch: Sequence[int], channels: int):
+    data = torch.randn(256, channels)
+    mean = torch.mean(data, dim=0)
+
+    if cov == "dplr":
+        cov = DPLRCovariance.from_data(data, rank=3)
+    elif cov == "precond":
+        cov = PreconditionedCovariance.from_data(data, rank=0)
+
+    denoiser = GaussianDenoiser(mean, cov, schedule=VPSchedule())
+
+    # Forward
+    x = torch.randn(*batch, channels, requires_grad=True)
+    t = torch.rand(())
+
+    q = denoiser(x, t)
+
+    assert isinstance(q, Posterior)
+    assert q.mean.shape == x.shape
 
 
 @pytest.mark.parametrize("with_label", [False, True])
