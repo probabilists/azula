@@ -5,7 +5,7 @@ import torch
 
 from typing import Sequence
 
-from azula.noise import VESchedule, VPSchedule
+from azula.noise import CosineSchedule, DecaySchedule, RectifiedSchedule, VESchedule, VPSchedule
 
 
 @pytest.mark.parametrize("batch", [(), (64,)])
@@ -13,6 +13,9 @@ def test_schedules(batch: Sequence[int]):
     Ss = [
         VPSchedule,
         VESchedule,
+        CosineSchedule,
+        RectifiedSchedule,
+        DecaySchedule,
     ]
 
     for S in Ss:
