@@ -13,6 +13,7 @@ from torch.utils.checkpoint import checkpoint
 from typing import Optional, Tuple
 
 from .layers import RMSNorm
+from .utils import promote_dtype
 
 
 class MultiheadSelfAttention(nn.Module):
@@ -107,6 +108,7 @@ class MultiheadSelfAttention(nn.Module):
             return self._forward(x, theta, mask)
 
 
+@promote_dtype
 def apply_rope(q: Tensor, k: Tensor, theta: Tensor) -> Tuple[Tensor, Tensor]:
     r"""
     References:

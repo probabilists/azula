@@ -6,11 +6,12 @@ Note:
     encoding is a static function.
 """
 
-import numpy as np
 import torch
 import torch.nn as nn
 
 from torch import Tensor
+
+from .utils import promote_dtype
 
 
 class SineEncoding(nn.Module):
@@ -34,10 +35,8 @@ class SineEncoding(nn.Module):
 
         assert features % 2 == 0
 
-        freqs = np.linspace(0, 1, features // 2)
-        freqs = omega ** (-freqs)
-
-        self.register_buffer("freqs", torch.as_tensor(freqs, dtype=torch.float32))
+        self.features = features
+        self.omega = omega
 
     def forward(self, x: Tensor) -> Tensor:
         r"""
@@ -48,12 +47,20 @@ class SineEncoding(nn.Module):
             The embedding vector :math:`e`, with shape :math:`(*, D)`.
         """
 
-        x = x.unsqueeze(dim=-1)
+        return sine_encoding(x, features=self.features, omega=self.omega)
 
-        return torch.cat(
-            (
-                torch.sin(x * self.freqs),
-                torch.cos(x * self.freqs),
-            ),
-            dim=-1,
-        )
+
+@promote_dtype
+def sine_encoding(x: Tensor, /, features: int, omega: float = 1e4) -> Tensor:
+    x = x.unsqueeze(dim=-1)
+
+    freqs = torch.linspace(0, 1, features // 2, dtype=x.dtype, device=x.device)
+    freqs = omega ** (-freqs)
+
+    return torch.cat(
+        (
+            torch.sin(x * freqs),
+            torch.cos(x * freqs),
+        ),
+        dim=-1,
+    )

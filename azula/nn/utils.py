@@ -4,12 +4,14 @@ __all__ = [
     "checkpoint",
     "skip_init",
     "cpu_offload",
+    "promote_dtype",
 ]
 
 import torch
 import torch.nn as nn
 
 from contextlib import contextmanager
+from functools import reduce, wraps
 from torch._C._functorch import is_gradtrackingtensor
 from typing import Callable
 
@@ -74,6 +76,7 @@ def checkpoint(f: Callable, reentrant: bool = False) -> Callable:
         The checkpointed function.
     """
 
+    @wraps(f)
     def g(*args, **kwargs):
         mask = [
             torch.is_tensor(arg)
@@ -134,3 +137,30 @@ def cpu_offload(module: nn.Module, device: torch.device):
         yield module.to(device=device)
     finally:
         module.cpu()
+
+
+def promote_dtype(f: Callable, min_dtype: torch.dtype = torch.float32) -> Callable:
+    r"""Applies data type promotion to a function.
+
+    Arguments:
+        f: A function.
+        min_dtype: The minimum precision data type.
+
+    Returns:
+        The promoted function.
+    """
+
+    @wraps(f)
+    def g(*args, **kwargs):
+        dtypes = [arg.dtype for arg in args]
+        dtype = reduce(torch.promote_types, dtypes)
+
+        args = [arg.to(torch.promote_types(arg.dtype, min_dtype)) for arg in args]
+        outs = f(*args, **kwargs)
+
+        if torch.is_tensor(outs):
+            return outs.to(dtype)
+        else:
+            return tuple(out.to(dtype) for out in outs)
+
+    return g

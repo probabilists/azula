@@ -16,6 +16,8 @@ from einops.layers.torch import Rearrange
 from torch import Tensor
 from typing import Sequence, Union
 
+from .utils import promote_dtype
+
 
 def ConvNd(
     in_channels: int,
@@ -108,9 +110,13 @@ class LayerNorm(nn.Module):
             The standardized tensor :math:`y`, with shape :math:`(*)`.
         """
 
-        variance, mean = torch.var_mean(x, dim=self.dim, keepdim=True)
+        return layer_norm(x, dim=self.dim, eps=self.eps)
 
-        return (x - mean) * torch.rsqrt(variance + self.eps)
+
+@promote_dtype
+def layer_norm(x: Tensor, /, dim: Sequence[int], eps: float = 1e-5) -> Tensor:
+    v, m = torch.var_mean(x, dim=dim, keepdim=True)
+    return (x - m) * torch.rsqrt(v + eps)
 
 
 class RMSNorm(nn.Module):
@@ -145,9 +151,12 @@ class RMSNorm(nn.Module):
             The normalized tensor :math:`y`, with shape :math:`(*)`.
         """
 
-        irms = torch.rsqrt(torch.mean(torch.square(x), dim=self.dim, keepdim=True) + self.eps)
+        return rms_norm(x, dim=self.dim, eps=self.eps)
 
-        return x * irms
+
+@promote_dtype
+def rms_norm(x: Tensor, /, dim: Sequence[int], eps: float = 1e-5) -> Tensor:
+    return x * torch.rsqrt(torch.mean(torch.square(x), dim=dim, keepdim=True) + eps)
 
 
 def Patchify(patch_size: Sequence[int], channel_last: bool = False) -> Rearrange:
