@@ -11,10 +11,12 @@ from azula.linalg.solve import cg, gmres
 
 @pytest.fixture(autouse=True, scope="module")
 def torch_float64():
+    default = torch.get_default_dtype()
+
     try:
         yield torch.set_default_dtype(torch.float64)
     finally:
-        torch.set_default_dtype(torch.float32)
+        torch.set_default_dtype(default)
 
 
 @pytest.mark.parametrize("rank", [3, 5])
