@@ -11,11 +11,11 @@ import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 from torch import Tensor
-from torch.utils.checkpoint import checkpoint
 from typing import Dict, Optional, Sequence, Union
 
 from .attention import MultiheadSelfAttention
 from .layers import ConvNd, LayerNorm
+from .utils import checkpoint
 
 
 class UNetBlock(nn.Module):
@@ -118,7 +118,7 @@ class UNetBlock(nn.Module):
         """
 
         if self.checkpointing:
-            return checkpoint(self._forward, x, mod, use_reentrant=False)
+            return checkpoint(self._forward, reentrant=not self.training)(x, mod)
         else:
             return self._forward(x, mod)
 

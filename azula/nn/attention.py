@@ -102,7 +102,7 @@ class MultiheadSelfAttention(nn.Module):
         """
 
         if self.checkpointing:
-            return checkpoint(self._forward, x, theta, mask, use_reentrant=False)
+            return checkpoint(self._forward, reentrant=not self.training)(x, theta, mask)
         else:
             return self._forward(x, theta, mask)
 

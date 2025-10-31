@@ -15,6 +15,7 @@ from azula.nn.unet import UNet
 @pytest.mark.parametrize("attention_heads", [{}, {2: 1}])
 @pytest.mark.parametrize("dropout", [None, 0.1])
 @pytest.mark.parametrize("spatial", [1, 2])
+@pytest.mark.parametrize("checkpointing", [False, True])
 @pytest.mark.parametrize("batch_size", [4])
 def test_UNet(
     tmp_path: Path,
@@ -25,6 +26,7 @@ def test_UNet(
     attention_heads: Dict[int, int],
     dropout: float,
     spatial: int,
+    checkpointing: bool,
     batch_size: int,
 ):
     if attention_heads and torch.__version__.startswith("1"):
@@ -39,6 +41,7 @@ def test_UNet(
         attention_heads=attention_heads,
         dropout=dropout,
         spatial=spatial,
+        checkpointing=checkpointing,
     )
 
     unet = make()
