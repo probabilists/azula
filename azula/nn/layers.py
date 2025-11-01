@@ -9,6 +9,7 @@ __all__ = [
     "Unpatchify",
 ]
 
+import string
 import torch
 import torch.nn as nn
 
@@ -159,61 +160,53 @@ def rms_norm(x: Tensor, /, dim: Sequence[int], eps: float = 1e-5) -> Tensor:
     return x * torch.rsqrt(torch.mean(torch.square(x), dim=dim, keepdim=True) + eps)
 
 
-def Patchify(patch_size: Sequence[int], channel_last: bool = False) -> Rearrange:
+def Patchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearrange:
     r"""Returns a patch-to-channel layer.
 
     Arguments:
-        patch_size: The patch shape.
+        patch_shape: The patch shape.
         channel_last: Whether the output channel dimension is first or last.
     """
 
-    if len(patch_size) == 1:
-        (l,) = patch_size
-        if channel_last:
-            return Rearrange("... C (L l) -> ... L (C l)", l=l)
-        else:
-            return Rearrange("... C (L l) -> ... (C l) L", l=l)
-    elif len(patch_size) == 2:
-        h, w = patch_size
-        if channel_last:
-            return Rearrange("... C (H h) (W w) -> ... H W (C h w)", h=h, w=w)
-        else:
-            return Rearrange("... C (H h) (W w) -> ... (C h w) H W", h=h, w=w)
-    elif len(patch_size) == 3:
-        l, h, w = patch_size
-        if channel_last:
-            return Rearrange("... C (L l) (H h) (W w) -> ... L H W (C l h w)", l=l, h=h, w=w)
-        else:
-            return Rearrange("... C (L l) (H h) (W w) -> ... (C l h w) L H W", l=l, h=h, w=w)
+    ndim = len(patch_shape)
+
+    ABC = string.ascii_uppercase[:ndim]
+    abc = string.ascii_lowercase[:ndim]
+
+    in_shape = (f"({A} {a})" for A, a in zip(ABC, abc))
+    in_shape = "... Z " + " ".join(in_shape)
+
+    if channel_last:
+        out_shape = "... " + " ".join(ABC) + " (Z " + " ".join(abc) + ")"
     else:
-        raise NotImplementedError()
+        out_shape = "... (Z " + " ".join(abc) + ") " + " ".join(ABC)
+
+    lengths = {a: size for a, size in zip(abc, patch_shape)}
+
+    return Rearrange(f"{in_shape} -> {out_shape}", **lengths)
 
 
-def Unpatchify(patch_size: Sequence[int], channel_last: bool = False) -> Rearrange:
+def Unpatchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearrange:
     r"""Returns a channel-to-patch layer.
 
     Arguments:
-        patch_size: The patch shape.
+        patch_shape: The patch shape.
         channel_last: Whether the input channel dimension is first or last.
     """
 
-    if len(patch_size) == 1:
-        (l,) = patch_size
-        if channel_last:
-            return Rearrange("... L (C l) -> ... C (L l)", l=l)
-        else:
-            return Rearrange("... (C l) L -> ... C (L l)", l=l)
-    elif len(patch_size) == 2:
-        h, w = patch_size
-        if channel_last:
-            return Rearrange("... H W (C h w) -> ... C (H h) (W w)", h=h, w=w)
-        else:
-            return Rearrange("... (C h w) H W -> ... C (H h) (W w)", h=h, w=w)
-    elif len(patch_size) == 3:
-        l, h, w = patch_size
-        if channel_last:
-            return Rearrange("... L H W (C l h w) -> ... C (L l) (H h) (W w)", l=l, h=h, w=w)
-        else:
-            return Rearrange("... (C l h w) L H W -> ... C (L l) (H h) (W w)", l=l, h=h, w=w)
+    ndim = len(patch_shape)
+
+    ABC = string.ascii_uppercase[:ndim]
+    abc = string.ascii_lowercase[:ndim]
+
+    in_shape = (f"({A} {a})" for A, a in zip(ABC, abc))
+    in_shape = "... Z " + " ".join(in_shape)
+
+    if channel_last:
+        out_shape = "... " + " ".join(ABC) + " (Z " + " ".join(abc) + ")"
     else:
-        raise NotImplementedError()
+        out_shape = "... (Z " + " ".join(abc) + ") " + " ".join(ABC)
+
+    lengths = {a: size for a, size in zip(abc, patch_shape)}
+
+    return Rearrange(f"{out_shape} -> {in_shape}", **lengths)
