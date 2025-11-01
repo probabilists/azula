@@ -142,7 +142,7 @@ class StableDenoiser(Denoiser):
 
     Arguments:
         backbone: A time conditional network.
-        discrete: The discrete noise schedule used during training.
+        sigmas: The discrete noise schedule used during training.
         schedule: A noise schedule. If :py:`None`, use
             :class:`azula.noise.VPSchedule` instead.
         prediction: The backbone prediction type.
@@ -151,7 +151,7 @@ class StableDenoiser(Denoiser):
     def __init__(
         self,
         backbone: nn.Module,
-        discrete: Tensor,
+        sigmas: Tensor,
         schedule: Optional[Schedule] = None,
         prediction: str = "epsilon",
     ):
@@ -162,13 +162,13 @@ class StableDenoiser(Denoiser):
 
         if schedule is None:
             self.schedule = VPSchedule(
-                alpha_min=(1 - discrete[-1].item() ** 2) ** 0.5,
-                sigma_min=discrete[0].item(),
+                alpha_min=(1 - sigmas[-1].item() ** 2) ** 0.5,
+                sigma_min=sigmas[0].item(),
             )
         else:
             self.schedule = schedule
 
-        self.register_buffer("discrete", discrete)
+        self.register_buffer("sigmas", sigmas.to(torch.get_default_dtype()))
 
     def forward(
         self,
@@ -204,7 +204,7 @@ class StableDenoiser(Denoiser):
 
         c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_time = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
-        c_time = torch.searchsorted(self.discrete, c_time.flatten())
+        c_time = torch.searchsorted(self.sigmas, c_time.flatten())
 
         B, _, _, _ = z_t.shape
         _, L, D = prompt_embeds.shape
@@ -250,11 +250,11 @@ def load_model(
         )
 
     alphas = pipe.scheduler.alphas_cumprod.to(dtype=torch.float64).sqrt()
-    sigmas = torch.sqrt(1 - alphas**2).to(dtype=torch.float32)
+    sigmas = torch.sqrt(1 - alphas**2)
 
     denoiser = StableDenoiser(
         backbone=pipe.unet,
-        discrete=sigmas,
+        sigmas=sigmas,
         **card.config,
     )
 

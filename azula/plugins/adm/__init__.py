@@ -26,7 +26,6 @@ __all__ = [
     "load_model",
 ]
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -83,20 +82,24 @@ class AblatedDenoiser(Denoiser):
         self.learn_var = learn_var
 
         if discrete_schedule == "linear":
-            beta = np.linspace(0.1 / discrete_steps, 20.0 / discrete_steps, discrete_steps)
+            beta = torch.linspace(
+                0.1 / discrete_steps,
+                20.0 / discrete_steps,
+                discrete_steps,
+                dtype=torch.float64,
+            )
         elif discrete_schedule == "cosine":
-            t = np.linspace(0, 1, discrete_steps + 1)
-            alpha_bar = np.cos((t + 0.008) / 1.008 * np.pi / 2) ** 2
+            t = torch.linspace(0, 1, discrete_steps + 1, dtype=torch.float64)
+            alpha_bar = torch.cos((t + 0.008) / 1.008 * torch.pi / 2) ** 2
             beta = 1 - alpha_bar[1:] / alpha_bar[:-1]
-            beta = np.minimum(beta, 0.999)
+            beta = torch.clip(beta, max=0.999)
         else:
             raise ValueError(f"Unknown discrete schedule '{discrete_schedule}'.")
 
-        alpha_bar = np.cumprod(1 - beta)
-        discrete = np.sqrt(1 - alpha_bar)
-        discrete = discrete.astype(np.float32)
+        alpha_bar = torch.cumprod(1 - beta, dim=0)
+        sigmas = torch.sqrt(1 - alpha_bar)
 
-        self.register_buffer("discrete", torch.as_tensor(discrete))
+        self.register_buffer("sigmas", sigmas.to(torch.get_default_dtype()))
 
     def forward(
         self,
@@ -125,7 +128,7 @@ class AblatedDenoiser(Denoiser):
         c_out = -sigma_t / alpha_t
         c_skip = 1 / alpha_t
         c_time = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
-        c_time = torch.searchsorted(self.discrete, c_time.flatten())
+        c_time = torch.searchsorted(self.sigmas, c_time.flatten())
         c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         output = self.backbone(c_in * x_t, c_time, y=label, **kwargs)
