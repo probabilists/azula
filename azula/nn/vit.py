@@ -245,3 +245,113 @@ class ViT(nn.Module):
         x = self.unpatch(x)
 
         return x
+
+
+class RoutingViT(ViT):
+    r"""Creates a modulated ViT-like module with token routing.
+
+    References:
+        | TREAD: Token Routing for Efficient Architecture-agnostic Diffusion Training (Krause et al., 2025)
+        | https://arxiv.org/abs/2501.04765
+
+    Arguments:
+        in_channels: The number of input channels :math:`C_i`.
+        out_channels: The number of output channels :math:`C_o`.
+        route_start: The block index at which the route starts.
+        route_end: The block index at which the route ends.
+        route_rate: The selection rate of the route. If :py:`0.9`, 90% of the tokens are skipped.
+        kwargs: Keyword arguments passed to :class:`ViT`.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        route_start: int = 1,
+        route_end: int = -1,
+        route_rate: float = 0.5,
+        **kwargs,
+    ):
+        super().__init__(in_channels, out_channels, **kwargs)
+
+        n = len(self.blocks)
+
+        assert -n <= route_start < n, f"Route start ({route_start}) is out of range."
+        assert -n < route_end <= n, f"Route end ({route_end}) is out of range."
+
+        route_start = route_start % n
+        route_end = (route_end - 1) % n + 1
+
+        assert route_start <= route_end, (
+            f"Route ends ({route_end}) before it starts ({route_start})."
+        )
+
+        self.route_start = route_start
+        self.route_end = route_end
+        self.route_rate = route_rate
+
+    def forward(
+        self,
+        x: Tensor,
+        mod: Optional[Tensor] = None,
+        cond: Optional[Tensor] = None,
+    ) -> Tensor:
+        r"""
+        Arguments:
+            x: The input tensor, with shape :math:`(B, C_i, L_1, ..., L_N)`.
+            mod: The modulation vector, with shape :math:`(D)` or :math:`(B, D)`.
+            cond: The condition tensor, with :math:`(B, C_c, L_1, ..., L_N)`.
+
+        Returns:
+            The output tensor, with shape :math:`(B, C_o, L_1, ..., L_N)`.
+        """
+
+        if cond is not None:
+            x = torch.cat((x, cond), dim=1)
+
+        x = self.patch(x)
+        x = self.in_proj(x)
+
+        shape = x.shape[1:-1]
+
+        p = (torch.arange(size, dtype=x.dtype, device=x.device) for size in shape)
+        p = torch.cartesian_prod(*p)
+        p = torch.reshape(p, shape=(-1, len(shape)))
+
+        x = torch.flatten(x, 1, -2)
+        x = x + self.positional_embedding(p)
+
+        for block in self.blocks[: self.route_start]:
+            x = block(x, mod, pos=p)
+
+        if self.training and self.route_start < self.route_end:
+            B, L, _ = x.shape
+            K = math.ceil(L * (1 - self.route_rate) / 64) * 64
+
+            mask = torch.stack([torch.randperm(L, device=x.device)[:K] for _ in range(B)])
+            mask = torch.sort(mask, dim=1).values
+
+            x_mask = torch.take_along_dim(x, mask[..., None], dim=1)
+            p_mask = torch.take_along_dim(p[None], mask[..., None], dim=1)
+        else:
+            mask, x_mask, p_mask = None, x, p
+
+        for block in self.blocks[self.route_start : self.route_end]:
+            x_mask = block(x_mask, mod, pos=p_mask)
+
+        if self.training and self.route_start < self.route_end:
+            x = torch.scatter(x, src=x_mask, index=mask[..., None].expand_as(x_mask), dim=1)
+        else:
+            x = x_mask
+
+        del mask, x_mask, p_mask
+
+        for block in self.blocks[self.route_end :]:
+            x = block(x, mod, pos=p)
+
+        x = torch.unflatten(x, sizes=shape, dim=-2)
+
+        x = self.out_proj(x)
+        x = self.unpatch(x)
+
+        return x

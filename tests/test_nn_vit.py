@@ -5,7 +5,7 @@ import torch
 
 from pathlib import Path
 
-from azula.nn.vit import ViT
+from azula.nn.vit import RoutingViT, ViT
 
 
 @pytest.mark.parametrize("length", [16])
@@ -16,6 +16,7 @@ from azula.nn.vit import ViT
 @pytest.mark.parametrize("spatial", [1, 2])
 @pytest.mark.parametrize("rope", [False, True])
 @pytest.mark.parametrize("checkpointing", [False, True])
+@pytest.mark.parametrize("tread", [False, True])
 @pytest.mark.parametrize("batch_size", [4])
 def test_ViT(
     tmp_path: Path,
@@ -28,9 +29,10 @@ def test_ViT(
     spatial: int,
     rope: bool,
     checkpointing: bool,
+    tread: bool,
     batch_size: int,
 ):
-    make = lambda: ViT(
+    make = lambda: (RoutingViT if tread else ViT)(
         in_channels=in_channels,
         out_channels=out_channels,
         mod_features=mod_features,
