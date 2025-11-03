@@ -39,7 +39,8 @@ import math
 import torch
 
 from torch import Tensor
-from typing import Optional, Sequence, Union
+from tqdm import tqdm
+from typing import Iterable, Optional, Sequence, Union
 
 from .denoise import Denoiser
 
@@ -52,6 +53,7 @@ class Sampler(abc.ABC):
         stop: The stopping time :math:`t_0`.
         steps: The number of discretization steps :math:`T`. By default, the step size
             :math:`t_{i} - t_{i-1}` is constant.
+        silent: Whether to hide the sampling progress bar or not.
         dtype: The time data type.
         device: The time device.
     """
@@ -63,12 +65,14 @@ class Sampler(abc.ABC):
         start: float = 1.0,
         stop: float = 0.0,
         steps: int = 64,
+        silent: bool = False,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
     ):
         self.start = start
         self.stop = stop
         self.steps = steps
+        self.silent = silent
 
         self.dtype = dtype
         self.device = device
@@ -117,6 +121,15 @@ class Sampler(abc.ABC):
 
         return mean_T + std_T * torch.randn_like(mean_T)
 
+    def progress_bar(self, it: Iterable) -> Iterable:
+        if torch.is_tensor(it):
+            it = it.unbind()
+
+        if self.silent:
+            return it
+        else:
+            return tqdm(it, miniters=1, unit="step", ncols=79, ascii=True)
+
     @torch.no_grad()
     def __call__(self, x: Tensor, **kwargs) -> Tensor:
         r"""Simulates the reverse process from :math:`t_T` to :math:`t_0`.
@@ -129,9 +142,11 @@ class Sampler(abc.ABC):
             The clean(er) tensor :math:`x_{t_0}`, with shape :math:`(*)`.
         """
 
+        time_pairs = self.timesteps.unfold(0, 2, 1).to(device=x.device)
+
         x_t = x
 
-        for t, s in self.timesteps.unfold(0, 2, 1).to(device=x.device).unbind():
+        for t, s in self.progress_bar(time_pairs):
             x_s = self.step(x_t, t, s, **kwargs)
             x_t = x_s
 
@@ -405,7 +420,7 @@ class ABSampler(Sampler):
 
         buffer = []
 
-        for i, t in enumerate(time[:-1].unbind()):
+        for i, t in enumerate(self.progress_bar(time[:-1])):
             alpha_t, sigma_t = alpha[i], sigma[i]
             alpha_s = alpha[i + 1]
 
@@ -516,7 +531,7 @@ class EABSampler(Sampler):
 
         buffer = []
 
-        for i, t in enumerate(time[:-1].unbind()):
+        for i, t in enumerate(self.progress_bar(time[:-1])):
             alpha_t, sigma_t = alpha[i], sigma[i]
             alpha_s = alpha[i + 1]
 
