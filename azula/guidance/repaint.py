@@ -38,8 +38,8 @@ class RePaintSampler(DDIMSampler):
     ):
         super().__init__(denoiser, **kwargs)
 
-        self.register_buffer("y", torch.as_tensor(y))
-        self.register_buffer("mask", torch.as_tensor(mask))
+        self.y = y
+        self.mask = mask
 
         self.iterations = iterations
 

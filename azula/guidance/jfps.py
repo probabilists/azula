@@ -45,11 +45,10 @@ class JFPSDenoiser(Denoiser):
 
         self.denoiser = denoiser
 
+        self.y = y
         self.A = A
         self.cov_y = cov_y
         self.cov_x = cov_x
-
-        self.register_buffer("y", torch.as_tensor(y))
 
         if solver == "cg":
             self.solve = partial(cg, iterations=iterations)

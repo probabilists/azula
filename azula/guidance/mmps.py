@@ -48,14 +48,13 @@ class MMPSDenoiser(Denoiser):
 
         self.denoiser = denoiser
 
+        self.y = y
         self.A = A
 
-        if torch.is_tensor(cov_y):
-            self.cov_y = DiagonalCovariance(cov_y)
-        else:
+        if isinstance(cov_y, Covariance):
             self.cov_y = cov_y
-
-        self.register_buffer("y", torch.as_tensor(y))
+        else:
+            self.cov_y = DiagonalCovariance(cov_y)
 
         if solver == "cg":
             self.solve = partial(cg, iterations=iterations)

@@ -94,8 +94,7 @@ class LayerNorm(nn.Module):
         super().__init__()
 
         self.dim = dim if isinstance(dim, int) else tuple(dim)
-
-        self.register_buffer("eps", torch.as_tensor(eps))
+        self.eps = eps
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}"
@@ -132,8 +131,7 @@ class RMSNorm(nn.Module):
         super().__init__()
 
         self.dim = dim if isinstance(dim, int) else tuple(dim)
-
-        self.register_buffer("eps", torch.as_tensor(eps))
+        self.eps = eps
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}"
@@ -147,9 +145,9 @@ class RMSNorm(nn.Module):
             The normalized tensor :math:`y`, with shape :math:`(*)`.
         """
 
-        rms = torch.rsqrt(torch.mean(torch.square(x), dim=self.dim, keepdim=True) + self.eps)
+        irms = torch.rsqrt(torch.mean(torch.square(x), dim=self.dim, keepdim=True) + self.eps)
 
-        return x * rms
+        return x * irms
 
 
 def Patchify(patch_size: Sequence[int], channel_last: bool = False) -> Rearrange:

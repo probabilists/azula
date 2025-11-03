@@ -12,9 +12,9 @@ defines a series of marginal distributions
 The goal of diffusion models is to generate samples from :math:`p(X_0)`. To this end,
 reverse transition kernels :math:`q(X_s \mid X_t)` from :math:`t` to :math:`s < t` are
 chosen. Then, starting from :math:`x_1 \sim p(X_1)`, :math:`T` transitions
-:math:`x_{t_{i-1}} \sim q(X_{t_{i-1}} \mid x_{t_i})` are simulated from :math:`t_T = 1` to
-:math:`t_0 = 0`. If the kernels are consistent with the marginals :math:`p(X_t)`, that
-is if
+:math:`x_{t_{i-1}} \sim q(X_{t_{i-1}} \mid x_{t_i})` are simulated from :math:`t_T = 1`
+to :math:`t_0 = 0`. If the kernels are consistent with the marginals :math:`p(X_t)`,
+that is if
 
 .. math:: p(X_{t_{i-1}}) \approx
     \int q(X_{t_{i-1}} \mid x_{t_i}) \, p(x_{t_i}) \, dx_{t_i} \, ,
@@ -34,16 +34,17 @@ __all__ = [
     "PCSampler",
 ]
 
+import abc
+import math
 import torch
-import torch.nn as nn
 
 from torch import Tensor
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 from .denoise import Denoiser
 
 
-class Sampler(nn.Module):
+class Sampler(abc.ABC):
     r"""Abstract reverse diffusion sampler.
 
     Arguments:
@@ -51,6 +52,8 @@ class Sampler(nn.Module):
         stop: The stopping time :math:`t_0`.
         steps: The number of discretization steps :math:`T`. By default, the step size
             :math:`t_{i} - t_{i-1}` is constant.
+        dtype: The time data type.
+        device: The time device.
     """
 
     denoiser: Denoiser
@@ -60,12 +63,15 @@ class Sampler(nn.Module):
         start: float = 1.0,
         stop: float = 0.0,
         steps: int = 64,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
     ):
-        super().__init__()
-
-        self.register_buffer("start", torch.as_tensor(start))
-        self.register_buffer("stop", torch.as_tensor(stop))
+        self.start = start
+        self.stop = stop
         self.steps = steps
+
+        self.dtype = dtype
+        self.device = device
 
     @property
     def timesteps(self) -> Tensor:
@@ -73,16 +79,16 @@ class Sampler(nn.Module):
             self.start,
             self.stop,
             self.steps + 1,
-            dtype=self.start.dtype,
-            device=self.start.device,
+            dtype=self.dtype,
+            device=self.device,
         )
 
     @torch.no_grad()
     def init(
         self,
         shape: Sequence[int],
-        mean: Optional[Tensor] = None,
-        var: Optional[Tensor] = None,
+        mean: Union[float, Tensor] = 0.0,
+        var: Union[float, Tensor] = 1.0,
         **kwargs,
     ) -> Tensor:
         r"""Draws an initial noisy tensor :math:`x_{t_T}`.
@@ -92,32 +98,27 @@ class Sampler(nn.Module):
         Arguments:
             shape: The shape :math:`(*)` of the tensor.
             mean: The mean :math:`\mathbb{E}[X]` of :math:`p(X)`, with shape
-                :math:`()` or :math:`(*)`. If :py:`None`, use 0 instead.
+                :math:`()` or :math:`(*)`.
             var: The variance :math:`\mathbb{V}[X]` of :math:`p(X)`, with shape
-                :math:`()` or :math:`(*)`. If :py:`None`, use 1 instead.
-            kwargs: Keyword arguments passed to :func:`torch.randn`.
+                :math:`()` or :math:`(*)`.
+            kwargs: Keyword arguments passed to :func:`torch.Tensor.to`.
 
         Returns:
-            A noisy tensor :math:`x_1`, with shape :math:`(*)`.
+            A noisy tensor :math:`x_{t_T}`, with shape :math:`(*)`.
         """
 
-        kwargs.setdefault("dtype", self.start.dtype)
-        kwargs.setdefault("device", self.start.device)
+        t_T = self.timesteps[-1]
 
-        alpha_1, sigma_1 = self.denoiser.schedule(self.start)
+        alpha_T, sigma_T = self.denoiser.schedule(t_T)
+        alpha_T, sigma_T = alpha_T.to(**kwargs), sigma_T.to(**kwargs)
 
-        if mean is None:
-            mean = torch.zeros_like(alpha_1)
+        mean_T, std_T = alpha_T * mean, torch.sqrt(alpha_T**2 * var + sigma_T**2)
+        mean_T, std_T = mean_T.expand(shape), std_T.expand(shape)
 
-        if var is None:
-            var = torch.ones_like(sigma_1)
-
-        z = torch.randn(shape, **kwargs)
-
-        return alpha_1 * mean + torch.sqrt(alpha_1**2 * var + sigma_1**2) * z
+        return mean_T + std_T * torch.randn_like(mean_T)
 
     @torch.no_grad()
-    def forward(self, x: Tensor, **kwargs) -> Tensor:
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
         r"""Simulates the reverse process from :math:`t_T` to :math:`t_0`.
 
         Arguments:
@@ -130,7 +131,7 @@ class Sampler(nn.Module):
 
         x_t = x
 
-        for t, s in self.timesteps.unfold(0, 2, 1):
+        for t, s in self.timesteps.unfold(0, 2, 1).to(device=x.device).unbind():
             x_s = self.step(x_t, t, s, **kwargs)
             x_t = x_s
 
@@ -222,8 +223,7 @@ class DDIMSampler(Sampler):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
-
-        self.register_buffer("eta", torch.as_tensor(eta))
+        self.eta = eta
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)
@@ -327,8 +327,9 @@ class ABSampler(Sampler):
     r"""Creates an Adams-Bashforth (AB) multi-step sampler.
 
     Note:
-        This sampler is equivalent to the linear multi-step (LMS) sampler from Katherine
-        Crowson's `k-diffusion <https://github.com/crowsonkb/k-diffusion>`_.
+        This sampler is equivalent to the :math:`\rho\mathrm{AB}` sampler from Zhang et al.
+        (2023) and the linear multi-step (LMS) sampler from Katherine Crowson's
+        `k-diffusion <https://github.com/crowsonkb/k-diffusion>`_.
 
     Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
     t` such that
@@ -353,6 +354,10 @@ class ABSampler(Sampler):
 
     Wikipedia:
         https://wikipedia.org/wiki/Linear_multistep_method
+
+    References:
+        | Fast Sampling of Diffusion Models with Exponential Integrator (Zhang et al., 2023)
+        | https://arxiv.org/abs/2204.13902
 
     Arguments:
         denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
@@ -391,15 +396,16 @@ class ABSampler(Sampler):
         return torch.linalg.solve(V, b).to(dtype=t.dtype)
 
     @torch.no_grad()
-    def forward(self, x: Tensor, **kwargs) -> Tensor:
-        alpha, sigma = self.denoiser.schedule(self.timesteps)
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
+        time = self.timesteps.to(device=x.device)
+        alpha, sigma = self.denoiser.schedule(time)
         rho = sigma / alpha
 
         x_t = x
 
         buffer = []
 
-        for i, t in enumerate(self.timesteps[:-1]):
+        for i, t in enumerate(time[:-1].unbind()):
             alpha_t, sigma_t = alpha[i], sigma[i]
             alpha_s = alpha[i + 1]
 
@@ -501,15 +507,16 @@ class EABSampler(Sampler):
         return torch.linalg.solve(V, b).to(dtype=t.dtype)
 
     @torch.no_grad()
-    def forward(self, x: Tensor, **kwargs) -> Tensor:
-        alpha, sigma = self.denoiser.schedule(self.timesteps)
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
+        time = self.timesteps.to(device=x.device)
+        alpha, sigma = self.denoiser.schedule(time)
         log_rho = sigma.log() - alpha.log()
 
         x_t = x
 
         buffer = []
 
-        for i, t in enumerate(self.timesteps[:-1]):
+        for i, t in enumerate(time[:-1].unbind()):
             alpha_t, sigma_t = alpha[i], sigma[i]
             alpha_s = alpha[i + 1]
 
@@ -552,8 +559,7 @@ class PCSampler(Sampler):
 
         self.denoiser = denoiser
         self.corrections = corrections
-
-        self.register_buffer("delta", torch.as_tensor(delta))
+        self.delta = delta
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)
@@ -564,8 +570,8 @@ class PCSampler(Sampler):
             q_t = self.denoiser(x_t, t, **kwargs)
             x_t = (
                 alpha_t * q_t.mean
-                + torch.sqrt(1 - self.delta) * (x_t - alpha_t * q_t.mean)
-                + torch.sqrt(self.delta) * sigma_t * torch.randn_like(x_t)
+                + math.sqrt(1 - self.delta) * (x_t - alpha_t * q_t.mean)
+                + math.sqrt(self.delta) * sigma_t * torch.randn_like(x_t)
             )
 
         # Predictor

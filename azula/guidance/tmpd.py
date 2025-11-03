@@ -12,7 +12,7 @@ __all__ = [
 import torch
 
 from torch import Tensor
-from typing import Callable
+from typing import Callable, Union
 
 from ..denoise import Denoiser, DiracPosterior
 from ..noise import Schedule
@@ -33,16 +33,15 @@ class TMPDenoiser(Denoiser):
         denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
-        var_y: Tensor,
+        var_y: Union[float, Tensor],
     ):
         super().__init__()
 
         self.denoiser = denoiser
 
+        self.y = y
         self.A = A
-
-        self.register_buffer("y", torch.as_tensor(y))
-        self.register_buffer("var_y", torch.as_tensor(var_y))
+        self.var_y = var_y
 
     @property
     def schedule(self) -> Schedule:

@@ -56,11 +56,9 @@ class ElucidatedSchedule(Schedule):
     """
 
     def __init__(self, sigma_min: float = 0.002, sigma_max: float = 80.0, rho: float = 7.0):
-        super().__init__()
-
-        self.register_buffer("sigma_min", torch.as_tensor(sigma_min))
-        self.register_buffer("sigma_max", torch.as_tensor(sigma_max))
-        self.register_buffer("rho", torch.as_tensor(rho))
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        self.rho = rho
 
     def alpha(self, t: Tensor) -> Tensor:
         return torch.ones_like(t)
@@ -68,7 +66,7 @@ class ElucidatedSchedule(Schedule):
     def sigma(self, t: Tensor) -> Tensor:
         lower = self.sigma_min ** (1 / self.rho)
         upper = self.sigma_max ** (1 / self.rho)
-        return torch.lerp(lower, upper, t) ** self.rho
+        return torch.pow((1 - t) * lower + t * upper, self.rho)
 
     def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)

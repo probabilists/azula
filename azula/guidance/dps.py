@@ -15,10 +15,10 @@ from torch import Tensor
 from typing import Callable
 
 from ..denoise import Denoiser
-from ..sample import Sampler
+from ..sample import DDPMSampler
 
 
-class DPSSampler(Sampler):
+class DPSSampler(DDPMSampler):
     r"""Creates a DPS sampler.
 
     Arguments:
@@ -26,7 +26,7 @@ class DPSSampler(Sampler):
         y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`.
         A: The forward operator :math:`x \mapsto A(x)`.
         zeta: The guidance strength :math:`\zeta`.
-        kwargs: Keyword arguments passed to :class:`azula.sample.Sampler`.
+        kwargs: Keyword arguments passed to :class:`azula.sample.DDPMSampler`.
     """
 
     def __init__(
@@ -37,13 +37,11 @@ class DPSSampler(Sampler):
         zeta: float = 1.0,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(denoiser, **kwargs)
 
-        self.denoiser = denoiser
+        self.y = y
         self.A = A
-
-        self.register_buffer("y", torch.as_tensor(y))
-        self.register_buffer("zeta", torch.as_tensor(zeta))
+        self.zeta = zeta
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         # DDPM

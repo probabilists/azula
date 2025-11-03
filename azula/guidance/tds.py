@@ -41,7 +41,7 @@ class TDSSampler(Sampler):
         self.twist = twist
 
     @torch.no_grad()
-    def forward(self, x: Tensor, **kwargs) -> Tensor:
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
         r"""Simulates the reverse process from :math:`t_T` to :math:`t_0`.
 
         Arguments:
@@ -52,17 +52,7 @@ class TDSSampler(Sampler):
             The clean(er) tensors :math:`x_{t_0}`, with shape :math:`(K, *)`.
         """
 
-        kwargs.update(carry={})
-
-        x_t = x
-
-        for t, s in self.timesteps.unfold(0, 2, 1):
-            x_s = self.step(x_t, t, s, **kwargs)
-            x_t = x_s
-
-        x = x_t
-
-        return x
+        return super().__call__(x, carry={}, **kwargs)
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, carry: dict, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)

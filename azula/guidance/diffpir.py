@@ -13,7 +13,7 @@ import torch
 
 from functools import partial
 from torch import Tensor
-from typing import Callable
+from typing import Callable, Union
 
 from ..denoise import Denoiser, DiracPosterior
 from ..linalg.solve import cg, gmres
@@ -38,7 +38,7 @@ class DiffPIRDenoiser(Denoiser):
         denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
-        var_y: Tensor,
+        var_y: Union[float, Tensor],
         lmbda: float = 10.0,
         solver: str = "gmres",
         iterations: int = 1,
@@ -47,11 +47,10 @@ class DiffPIRDenoiser(Denoiser):
 
         self.denoiser = denoiser
 
+        self.y = y
         self.A = A
-
-        self.register_buffer("y", torch.as_tensor(y))
-        self.register_buffer("var_y", torch.as_tensor(var_y))
-        self.register_buffer("lmbda", torch.as_tensor(lmbda))
+        self.var_y = var_y
+        self.lmbda = lmbda
 
         if solver == "cg":
             self.solve = partial(cg, iterations=iterations)

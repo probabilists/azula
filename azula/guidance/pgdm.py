@@ -40,10 +40,9 @@ class PGDMSampler(DDIMSampler):
     ):
         super().__init__(denoiser, **kwargs)
 
+        self.y = y
         self.A = A
         self.A_inv = A_inv
-
-        self.register_buffer("y", torch.as_tensor(y))
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         # DDIM
