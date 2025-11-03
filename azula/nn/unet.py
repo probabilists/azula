@@ -250,28 +250,37 @@ class UNet(nn.Module):
         memory = []
 
         for blocks in self.descent:
+            if memory:
+                memory.append(x)
+            else:
+                memory.append(None)
+
             for block in blocks:
                 if isinstance(block, UNetBlock):
                     x = block(x, mod)
                 else:
                     x = block(x)
 
-            memory.append(x)
+        if hasattr(self, "bottleneck"):
+            x = self.bottleneck(x, mod)
 
         for blocks in self.ascent:
-            y = memory.pop()
-            if x is not y:
-                for i in range(2, x.ndim):
-                    if x.shape[i] > y.shape[i]:
-                        x = torch.narrow(x, i, 0, y.shape[i])
-
-                x = torch.cat((y, x), dim=1)
-
             for block in blocks:
                 if isinstance(block, UNetBlock):
                     x = block(x, mod)
                 else:
                     x = block(x)
+
+            y = memory.pop()
+
+            if y is None:
+                continue
+
+            for i in range(2, x.ndim):
+                if x.shape[i] > y.shape[i]:
+                    x = torch.narrow(x, i, 0, y.shape[i])
+
+            x = torch.cat((y, x), dim=1)
 
         return x
 
