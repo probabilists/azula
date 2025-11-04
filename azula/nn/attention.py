@@ -39,8 +39,8 @@ class MultiheadSelfAttention(nn.Module):
 
         assert channels % attention_heads == 0
 
-        self.qkv_proj = nn.Linear(channels, 3 * channels, bias=False)
-        self.y_proj = nn.Linear(channels, channels)
+        self.qkv_proj = nn.Linear(channels, 3 * channels)
+        self.y_proj = nn.Linear(channels, channels, bias=False)
 
         if qk_norm:
             if hasattr(nn, "RMSNorm"):
