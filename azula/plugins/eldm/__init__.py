@@ -185,7 +185,6 @@ def load_model(name: str) -> Tuple[Denoiser, AutoEncoder]:
     denoiser = ElucidatedLatentDenoiser(
         backbone=denoiser,
     )
-    denoiser.eval()
 
     autoencoder = content["encoder"]
     autoencoder = AutoEncoder(
@@ -193,6 +192,5 @@ def load_model(name: str) -> Tuple[Denoiser, AutoEncoder]:
         shift=autoencoder.bias.reshape(-1, 1, 1),
         scale=autoencoder.scale.reshape(-1, 1, 1),
     )
-    autoencoder.eval()
 
-    return denoiser, autoencoder
+    return denoiser.eval(), autoencoder.eval()

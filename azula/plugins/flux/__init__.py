@@ -299,4 +299,4 @@ def load_model(
         t5_tokenizer=pipe.tokenizer_2,
     )
 
-    return denoiser, autoencoder, textencoder
+    return denoiser.eval(), autoencoder.eval(), textencoder.eval()

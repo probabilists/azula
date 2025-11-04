@@ -268,4 +268,4 @@ def load_model(
         tokenizer=pipe.tokenizer,
     )
 
-    return denoiser, autoencoder, textencoder
+    return denoiser.eval(), autoencoder.eval(), textencoder.eval()

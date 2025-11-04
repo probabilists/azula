@@ -175,9 +175,8 @@ def load_model(name: str, **kwargs) -> Denoiser:
         denoiser = make_model(**card.config)
 
     denoiser.backbone.load_state_dict(state)
-    denoiser.eval()
 
-    return denoiser
+    return denoiser.eval()
 
 
 def make_model(

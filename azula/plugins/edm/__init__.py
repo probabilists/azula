@@ -148,6 +148,5 @@ def load_model(name: str) -> Denoiser:
     denoiser = ElucidatedDenoiser(
         backbone=denoiser,
     )
-    denoiser.eval()
 
-    return denoiser
+    return denoiser.eval()
