@@ -37,7 +37,7 @@ from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import DecaySchedule, Schedule
 
-from ..utils import as_dtype, load_cards
+from ..utils import as_dtype, load_cards, patch_diffusers
 
 
 class AutoEncoder(nn.Module):
@@ -272,11 +272,10 @@ def load_model(
     """
 
     from diffusers import FluxPipeline
-    from unittest.mock import patch
 
     card = load_cards(__name__)[name]
 
-    with skip_init(), patch("transformers.models.t5.tokenization_t5_fast.logger"):
+    with skip_init(), patch_diffusers():
         pipe = FluxPipeline.from_pretrained(
             card.repo,
             torch_dtype=as_dtype(card.dtype),

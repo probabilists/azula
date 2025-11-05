@@ -43,11 +43,11 @@ from typing import Optional, Tuple
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
-from azula.nn.utils import get_module_dtype
+from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import Schedule
 
 from ..edm import ElucidatedSchedule
-from ..utils import load_cards
+from ..utils import load_cards, patch_diffusers
 
 
 class AutoEncoder(nn.Module):
@@ -186,9 +186,12 @@ def load_model(name: str) -> Tuple[Denoiser, AutoEncoder]:
         backbone=denoiser,
     )
 
+    with skip_init(), patch_diffusers():
+        vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse")
+
     autoencoder = content["encoder"]
     autoencoder = AutoEncoder(
-        vae=AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse"),
+        vae=vae,
         shift=autoencoder.bias.reshape(-1, 1, 1),
         scale=autoencoder.scale.reshape(-1, 1, 1),
     )

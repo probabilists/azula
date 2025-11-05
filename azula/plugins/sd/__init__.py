@@ -35,7 +35,7 @@ from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import Schedule, VPSchedule
 
-from ..utils import as_dtype, load_cards
+from ..utils import as_dtype, load_cards, patch_diffusers
 
 
 class AutoEncoder(nn.Module):
@@ -241,7 +241,7 @@ def load_model(
 
     card = load_cards(__name__)[name]
 
-    with skip_init():
+    with skip_init(), patch_diffusers():
         pipe = StableDiffusionPipeline.from_pretrained(
             card.repo,
             torch_dtype=as_dtype(card.dtype),
