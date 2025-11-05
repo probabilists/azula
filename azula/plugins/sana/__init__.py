@@ -34,7 +34,7 @@ from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import DecaySchedule, Schedule
 
-from ..utils import as_dtype, load_cards, patch_diffusers
+from ..utils import load_cards, patch_diffusers, patch_mmap_safetensors
 
 
 class AutoEncoder(nn.Module):
@@ -255,10 +255,12 @@ def load_model(
     with skip_init(), patch_diffusers():
         pipe = SanaPipeline.from_pretrained(
             card.repo,
-            torch_dtype=as_dtype(card.dtype),
             variant=card.variant,
+            torch_dtype=card.dtype_map,
             **kwargs,
         )
+
+    patch_mmap_safetensors(pipe.text_encoder)
 
     denoiser = SanaDenoiser(backbone=pipe.transformer)
 

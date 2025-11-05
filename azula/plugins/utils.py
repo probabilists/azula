@@ -2,7 +2,6 @@ r"""Miscelaneous plugin helpers."""
 
 __all__ = [
     "load_cards",
-    "as_dtype",
 ]
 
 import os
@@ -15,17 +14,14 @@ from types import ModuleType, SimpleNamespace
 from typing import Dict, Optional
 
 
-def as_dtype(name: Optional[str] = None) -> torch.dtype:
+def as_torch_dtype(name: Optional[str] = None) -> torch.dtype:
     if name is None:
         return None
-    elif name == "float64":
-        return torch.float64
-    elif name == "float32":
-        return torch.float32
-    elif name == "float16":
-        return torch.float16
-    elif name == "bfloat16":
-        return torch.bfloat16
+
+    dtype = getattr(torch, name, None)
+
+    if isinstance(dtype, torch.dtype):
+        return dtype
     else:
         raise ValueError(f"Unknown data type '{name}'.")
 
@@ -38,7 +34,7 @@ def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
 
     Example:
         >>> cards = load_cards(azula.plugins.adm)
-        >>> list(cards)
+        >>> list(cards.keys())
         ['imagenet_64x64_cond',
          'imagenet_128x128_cond',
          'imagenet_256x256',
@@ -57,18 +53,45 @@ def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
     with open(file, mode="r") as f:
         cards = yaml.safe_load(f)
 
+    for card in cards.values():
+        if "dtype_map" in card:
+            card["dtype_map"] = {k: as_torch_dtype(v) for k, v in card["dtype_map"].items()}
+
     return {name: SimpleNamespace(**card) for name, card in cards.items()}
 
 
 @contextmanager
 def patch_diffusers():
+    from safetensors.torch import load, load_file
     from tqdm import std
     from unittest.mock import patch
 
+    def monkey_load(checkpoint_file, *args, **kwargs):
+        if isinstance(checkpoint_file, dict):
+            return checkpoint_file
+        elif kwargs.get("map_location", "cpu") == "meta":
+            return load_file(checkpoint_file)
+        else:
+            with open(checkpoint_file, "rb") as f:
+                return load(f.read())
+
     with (
         patch("diffusers.utils.logging.tqdm_lib", std),
+        patch("diffusers.models.model_loading_utils.load_state_dict", monkey_load),
+        patch("diffusers.models.modeling_utils.load_state_dict", monkey_load),
+        patch("diffusers.loaders.single_file_utils.load_state_dict", monkey_load),
+        patch("diffusers.loaders.unet.load_state_dict", monkey_load),
         patch("transformers.utils.logging.tqdm_lib", std),
         patch("transformers.modeling_utils.logger.warning_once"),
         patch("transformers.models.t5.tokenization_t5_fast.logger.warning_once"),
     ):
         yield
+
+
+def patch_mmap_safetensors(*modules):
+    for m in modules:
+        for p in m.parameters():
+            p.data = p.data.clone()
+
+        for b in m.buffers():
+            b.data = b.data.clone()

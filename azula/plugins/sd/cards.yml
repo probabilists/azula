@@ -2,42 +2,48 @@
 
 sd_1.1:
   repo: CompVis/stable-diffusion-v1-1
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
   config:
     prediction: epsilon
 
 sd_1.2:
   repo: CompVis/stable-diffusion-v1-2
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
   config:
     prediction: epsilon
 
 sd_1.3:
   repo: CompVis/stable-diffusion-v1-3
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
   config:
     prediction: epsilon
 
 sd_1.4:
   repo: CompVis/stable-diffusion-v1-4
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
   config:
     prediction: epsilon
 
 sd_1.5:
   repo: stable-diffusion-v1-5/stable-diffusion-v1-5
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
   config:
     prediction: epsilon
 
 sd_2:
   repo: stabilityai/stable-diffusion-2
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
   config:
     prediction: velocity

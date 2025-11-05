@@ -2,40 +2,64 @@
 
 sana_0.6b_512:
   repo: Efficient-Large-Model/Sana_600M_512px_diffusers
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
+    text_encoder: bfloat16
+    vae: float32
 
 sana_0.6b_1024:
   repo: Efficient-Large-Model/Sana_600M_1024px_diffusers
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
+    text_encoder: bfloat16
+    vae: float32
 
 sana_1.6b_512:
   repo: Efficient-Large-Model/Sana_1600M_512px_diffusers
-  dtype: float16
   variant: fp16
+  dtype_map:
+    default: float16
+    text_encoder: bfloat16
+    vae: float32
 
 sana_1.6b_1024:
   repo: Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers
-  dtype: bfloat16
   variant: bf16
+  dtype_map:
+    default: bfloat16
+    text_encoder: bfloat16
+    vae: float32
 
 sana_1.6b_2048:
   repo: Efficient-Large-Model/Sana_1600M_2Kpx_BF16_diffusers
-  dtype: bfloat16
   variant: bf16
+  dtype_map:
+    default: bfloat16
+    text_encoder: bfloat16
+    vae: float32
 
 sana_1.6b_4096:
   repo: Efficient-Large-Model/Sana_1600M_4Kpx_BF16_diffusers
-  dtype: bfloat16
   variant: bf16
+  dtype_map:
+    default: bfloat16
+    text_encoder: bfloat16
+    vae: float32
 
 sana_1.5_1.6b_1024:
   repo: Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers
-  dtype: bfloat16
   variant: null
+  dtype_map:
+    default: bfloat16
+    text_encoder: bfloat16
+    vae: float32
 
 sana_1.5_4.8b_1024:
   repo: Efficient-Large-Model/SANA1.5_4.8B_1024px_diffusers
-  dtype: bfloat16
   variant: null
+  dtype_map:
+    default: bfloat16
+    text_encoder: bfloat16
+    vae: float32
