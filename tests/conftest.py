@@ -14,9 +14,12 @@ def torch_device(pytestconfig):
     device = pytestconfig.getoption("device")
     device = torch.device(device)
 
-    default = torch.get_default_device()
+    if hasattr(torch, "get_default_device"):
+        default = torch.get_default_device()
+    else:
+        default = torch.empty(()).device
 
-    if device is default:
+    if device == default:
         yield
     else:
         try:

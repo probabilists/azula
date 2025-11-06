@@ -132,8 +132,8 @@ def checkpoint(f: Callable, reentrant: bool = False) -> Callable:
             for arg in args
         ]
 
-        tensors = [arg for include, arg in zip(mask, args, strict=True) if include]
-        others = [arg for include, arg in zip(mask, args, strict=True) if not include]
+        tensors = [arg for include, arg in zip(mask, args) if include]
+        others = [arg for include, arg in zip(mask, args) if not include]
 
         def h(*tensors):
             it, io = iter(tensors), iter(others)

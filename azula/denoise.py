@@ -39,7 +39,7 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from typing import Callable, Self
+from typing import Callable
 
 from .linalg.covariance import Covariance, IsotropicCovariance
 from .nn.utils import get_module_dtype
@@ -144,7 +144,7 @@ class GaussianDenoiser(Denoiser):
         self.cov = cov
         self.schedule = schedule
 
-    def _apply(self, fn: Callable, recurse: bool = True) -> Self:
+    def _apply(self, fn: Callable, recurse: bool = True):
         super()._apply(fn, recurse=recurse)
 
         self.mean = fn(self.mean)
