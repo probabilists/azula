@@ -30,9 +30,6 @@ def test_ViT(
     checkpointing: bool,
     batch_size: int,
 ):
-    if torch.__version__.startswith("1"):
-        return
-
     make = lambda: ViT(
         in_channels=in_channels,
         out_channels=out_channels,
