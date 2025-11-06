@@ -39,7 +39,7 @@ This formalism is closely followed by Azula's API.
 
 .. code-block:: python
 
-   from azula.denoise import PreconditionedDenoiser
+   from azula.denoise import KarrasDenoiser
    from azula.noise import VPSchedule
    from azula.sample import DDPMSampler
 
@@ -47,7 +47,7 @@ This formalism is closely followed by Azula's API.
    schedule = VPSchedule()
 
    # Initialize a denoiser
-   denoiser = PreconditionedDenoiser(
+   denoiser = KarrasDenoiser(
       backbone=CustomNN(in_features=5, out_features=5),
       schedule=schedule,
    )
@@ -83,11 +83,12 @@ Alternatively, Azula's plugin interface allows to load pre-trained models and us
 
    # Download weights from openai/guided-diffusion
    denoiser = adm.load_model("imagenet_256x256")
+   denoiser.to("cuda")
 
    # Generate a batch of 4 images
-   sampler = DDIMSampler(denoiser, steps=64).cuda()
+   sampler = DDIMSampler(denoiser, steps=64)
 
-   x1 = sampler.init((4, 3, 256, 256))
+   x1 = sampler.init((4, 3, 256, 256), device="cuda")
    x0 = sampler(x1)
 
    images = torch.clip((x0 + 1) / 2, min=0, max=1)
