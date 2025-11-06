@@ -38,6 +38,7 @@ def ConvNd(
     """
 
     CONVS = {
+        0: nn.Linear,
         1: nn.Conv1d,
         2: nn.Conv2d,
         3: nn.Conv3d,
@@ -54,13 +55,13 @@ def ConvNd(
         kernel_size = conv.weight.shape[2:]
         kernel_center = [k // 2 for k in kernel_size]
 
-        eye = torch.zeros_like(conv.weight.data)
+        eye = torch.zeros_like(conv.weight.data[:in_channels])
 
-        for i in range(out_channels):
-            eye[tuple((i, i % in_channels, *kernel_center))] = 1
+        for i in range(min(in_channels, out_channels)):
+            eye[tuple((i, i, *kernel_center))] = 1.0
 
-        conv.weight.data.mul_(1e-2)
-        conv.weight.data.add_(eye)
+        conv.weight.data[:in_channels].mul_(1e-2)
+        conv.weight.data[:in_channels].add_(eye)
 
     return conv
 

@@ -81,3 +81,15 @@ def test_UNet(
     y_copy = copy(x, mod)
 
     assert torch.allclose(y_unet, y_copy)
+
+    # BFloat16
+    unet.to(torch.bfloat16)
+    y16 = unet(x.to(torch.bfloat16), mod.to(torch.bfloat16))
+
+    unet.to(torch.float32)
+    y32 = unet(x.to(torch.float32), mod.to(torch.float32))
+
+    err = (y32 - y16).abs().flatten()
+
+    assert torch.quantile(err, 0.99) < 1e-2
+    assert torch.max(err) < 1e-1

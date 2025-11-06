@@ -153,7 +153,7 @@ class UNet(nn.Module):
         attention_heads: Dict[int, int] = {},  # noqa: B006
         spatial: int = 2,
         periodic: bool = False,
-        identity_init: bool = True,
+        identity_init: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -265,7 +265,7 @@ class UNet(nn.Module):
                     if x.shape[i] > y.shape[i]:
                         x = torch.narrow(x, i, 0, y.shape[i])
 
-                x = torch.cat((x, y), dim=1)
+                x = torch.cat((y, x), dim=1)
 
             for block in blocks:
                 if isinstance(block, UNetBlock):
