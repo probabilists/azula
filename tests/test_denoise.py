@@ -8,7 +8,7 @@ from torch import Tensor
 from torch.distributions import Normal
 from typing import Any, Sequence
 
-from azula.denoise import GaussianDenoiser, GaussianPosterior, Posterior, PreconditionedDenoiser
+from azula.denoise import GaussianDenoiser, GaussianPosterior, KarrasDenoiser, Posterior
 from azula.linalg.covariance import DPLRCovariance, PreconditionedCovariance
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
@@ -87,8 +87,8 @@ def test_GaussianDenoiser(cov: str, batch: Sequence[int], channels: int):
 @pytest.mark.parametrize("with_label", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
 @pytest.mark.parametrize("channels", [5])
-def test_PreconditionedDenoiser(with_label: bool, batch: Sequence[int], channels: int):
-    denoiser = PreconditionedDenoiser(
+def test_KarrasDenoiser(with_label: bool, batch: Sequence[int], channels: int):
+    denoiser = KarrasDenoiser(
         backbone=Dummy(channels, with_label),
         schedule=VPSchedule(),
     )

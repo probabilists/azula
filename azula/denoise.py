@@ -29,7 +29,8 @@ __all__ = [
     "DiracPosterior",
     "GaussianPosterior",
     "Denoiser",
-    "PreconditionedDenoiser",
+    "GaussianDenoiser",
+    "KarrasDenoiser",
 ]
 
 import abc
@@ -172,7 +173,7 @@ class GaussianDenoiser(Denoiser):
         return DiracPosterior(mean=mean)
 
 
-class PreconditionedDenoiser(Denoiser):
+class KarrasDenoiser(Denoiser):
     r"""Creates a Gaussian denoiser with EDM-style preconditioning.
 
     .. math::

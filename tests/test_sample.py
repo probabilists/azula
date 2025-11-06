@@ -8,7 +8,7 @@ from functools import partial
 from torch import Tensor
 from typing import Any, Sequence
 
-from azula.denoise import PreconditionedDenoiser
+from azula.denoise import KarrasDenoiser
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
 from azula.sample import (
@@ -52,7 +52,7 @@ class Dummy(nn.Module):
 @pytest.mark.parametrize("batch", [(), (64,)])
 @pytest.mark.parametrize("channels", [5])
 def test_samplers(with_label: bool, batch: Sequence[int], channels: int):
-    denoiser = PreconditionedDenoiser(
+    denoiser = KarrasDenoiser(
         backbone=Dummy(channels, with_label),
         schedule=VPSchedule(),
     )
