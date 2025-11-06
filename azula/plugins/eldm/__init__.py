@@ -43,6 +43,7 @@ from typing import Optional, Tuple
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
+from azula.nn.utils import get_module_dtype
 from azula.noise import Schedule
 
 from ..edm import ElucidatedSchedule
@@ -76,13 +77,13 @@ class AutoEncoder(nn.Module):
             A batch of latents :math:`z \sim q(Z \mid x)`, with shape :math:`(B, 4, 64, 64)`.
         """
 
-        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+        dtype = get_module_dtype(self.vae)
 
-        q_z_x = self.vae.encode(x.to(**dtype)).latent_dist
+        q_z_x = self.vae.encode(x.to(dtype)).latent_dist
         z = q_z_x.mean + q_z_x.std * torch.randn_like(q_z_x.mean)
         z = z * self.scale + self.shift
 
-        return z
+        return z.to(x)
 
     def decode(self, z: Tensor) -> Tensor:
         r"""Decodes latents to images.
@@ -94,12 +95,12 @@ class AutoEncoder(nn.Module):
             A batch of images :math:`x = D(z)`, with shape :math:`(B, 3, 512, 512)`.
         """
 
-        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+        dtype = get_module_dtype(self.vae)
 
         z = (z - self.shift) / self.scale
-        x = self.vae.decode(z.to(**dtype)).sample
+        x = self.vae.decode(z.to(dtype)).sample
 
-        return x
+        return x.to(z)
 
 
 class ElucidatedLatentDenoiser(Denoiser):
@@ -151,7 +152,14 @@ class ElucidatedLatentDenoiser(Denoiser):
         c_in = 1 / alpha_t
         c_time = (sigma_t / alpha_t).reshape_as(t)
 
-        mean = self.backbone(c_in * z_t, c_time, class_labels=label, **kwargs)
+        dtype = get_module_dtype(self.backbone)
+
+        mean = self.backbone(
+            (c_in * z_t).to(dtype),
+            c_time.to(dtype),
+            class_labels=label.to(dtype),
+            **kwargs,
+        ).to(z_t)
 
         return DiracPosterior(mean=mean)
 

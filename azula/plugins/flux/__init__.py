@@ -34,7 +34,7 @@ from torch import Tensor
 from typing import Dict, Optional, Sequence, Tuple, Union
 
 from azula.denoise import Denoiser, DiracPosterior
-from azula.nn.utils import skip_init
+from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import DecaySchedule, Schedule
 
 from ..utils import as_dtype, load_cards
@@ -66,9 +66,9 @@ class AutoEncoder(nn.Module):
             A batch of latents :math:`z \sim q(Z \mid x)`, with shape :math:`(B, H / 16, W / 16, 64)`.
         """
 
-        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+        dtype = get_module_dtype(self.vae)
 
-        q_z_x = self.vae.encode(x.to(**dtype)).latent_dist
+        q_z_x = self.vae.encode(x.to(dtype)).latent_dist
         z = q_z_x.mean + q_z_x.std * torch.randn_like(q_z_x.mean)
         z = (z - self.shift) * self.scale
         z = rearrange(z, "... C (H h) (W w) -> ... H W (C h w)", h=2, w=2)
@@ -85,11 +85,11 @@ class AutoEncoder(nn.Module):
             A batch of images :math:`x = D(z)`, with shape :math:`(B, 3, H, W)`.
         """
 
-        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+        dtype = get_module_dtype(self.vae)
 
         z = rearrange(z, "... H W (C h w) -> ... C (H h) (W w)", h=2, w=2)
         z = z / self.scale + self.shift
-        x = self.vae.decode(z.to(**dtype)).sample
+        x = self.vae.decode(z.to(dtype)).sample
 
         return x.to(z)
 
@@ -131,7 +131,7 @@ class TextEncoder(nn.Module):
                 max_length=self.clip_tokenizer.model_max_length,
                 padding="max_length",
                 return_tensors="pt",
-            ).input_ids.to(device=self.clip.device),
+            ).input_ids,
             output_hidden_states=False,
         ).pooler_output
 
@@ -143,7 +143,7 @@ class TextEncoder(nn.Module):
                 max_length=self.t5_tokenizer.model_max_length,
                 padding="max_length",
                 return_tensors="pt",
-            ).input_ids.to(device=self.t5.device),
+            ).input_ids,
             output_hidden_states=False,
         ).last_hidden_state
 
@@ -229,26 +229,30 @@ class FluxDenoiser(Denoiser):
         B, H, W, C = z_t.shape
         _, L, D = prompt_t5.shape
 
-        dtype = {"dtype": self.backbone.dtype, "device": self.backbone.device}
+        dtype = get_module_dtype(self.backbone)
 
-        img_ids = self.coordinates(H, W, **dtype)
-        txt_ids = torch.zeros((L, 3), **dtype)
+        img_ids = self.coordinates(H, W, dtype=dtype, device=z_t.device)
+        txt_ids = torch.zeros((L, 3), dtype=dtype, device=z_t.device)
 
         if guidance is not None:
-            guidance = torch.as_tensor(guidance, **dtype).expand(B)
+            guidance = torch.as_tensor(guidance, dtype=dtype, device=z_t.device).expand(B)
 
-        output = self.backbone(
-            timestep=c_time.to(**dtype).expand(B),
-            hidden_states=(c_in * z_t).to(**dtype).reshape(B, H * W, C),
-            encoder_hidden_states=prompt_t5.to(**dtype).expand(B, L, D),
-            pooled_projections=prompt_clip.to(**dtype),
-            img_ids=img_ids,
-            txt_ids=txt_ids,
-            guidance=guidance,
-            **kwargs,
-        ).sample.reshape_as(z_t)
+        output = (
+            self.backbone(
+                timestep=c_time.to(dtype).expand(B),
+                hidden_states=(c_in * z_t).to(dtype).reshape(B, H * W, C),
+                encoder_hidden_states=prompt_t5.to(dtype).expand(B, L, D),
+                pooled_projections=prompt_clip.to(dtype),
+                img_ids=img_ids,
+                txt_ids=txt_ids,
+                guidance=guidance,
+                **kwargs,
+            )
+            .sample.reshape_as(z_t)
+            .to(z_t)
+        )
 
-        mean = c_skip * z_t + c_out * output.to(z_t)
+        mean = c_skip * z_t + c_out * output
 
         return DiracPosterior(mean=mean)
 

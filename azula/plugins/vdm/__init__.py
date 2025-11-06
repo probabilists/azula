@@ -31,7 +31,7 @@ from typing import Optional
 from azula.debug import RaiseMock
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
-from azula.nn.utils import skip_init
+from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import Schedule, VPSchedule
 
 from ..utils import load_cards
@@ -76,7 +76,15 @@ class VelocityDenoiser(Denoiser):
         c_skip = alpha_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_time = crowson.utils.alpha_sigma_to_t(alpha_t, sigma_t).flatten()
 
-        mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_time, **kwargs)
+        dtype = get_module_dtype(self.backbone)
+
+        output = self.backbone(
+            (c_in * x_t).to(dtype),
+            c_time.to(dtype),
+            **kwargs,
+        ).to(x_t)
+
+        mean = c_skip * x_t + c_out * output
 
         return DiracPosterior(mean=mean)
 

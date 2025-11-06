@@ -1,19 +1,66 @@
 r"""Miscellaneous neural network helpers."""
 
 __all__ = [
+    "get_module_dtype",
+    "get_module_device",
     "checkpoint",
     "skip_init",
-    "cpu_offload",
     "promote_dtype",
 ]
 
 import torch
 import torch.nn as nn
 
-from contextlib import contextmanager
 from functools import reduce, wraps
 from torch._C._functorch import is_gradtrackingtensor
 from typing import Callable
+
+
+def get_module_dtype(module: nn.Module) -> torch.dtype:
+    r"""Returns the data type of a module.
+
+    The module's data type is the first floating-point type in the module's parameters
+    or buffers. If there is none, returns :py:`None`.
+
+    Arguments:
+        module: A module.
+    """
+
+    for p in module.parameters():
+        if torch.is_floating_point(p):
+            return p.dtype
+
+    for b in module.buffers():
+        if torch.is_floating_point(b):
+            return b.dtype
+
+    return None
+
+
+def get_module_device(module: nn.Module) -> torch.device:
+    r"""Returns the execution device of a module.
+
+    The module's device is the first device in the module's parameters or buffers. If
+    there is none, returns :py:`None`.
+
+    Arguments:
+        module: A module.
+    """
+
+    for m in module.modules():
+        if hasattr(m, "_hf_hook") and hasattr(m._hf_hook, "execution_device"):
+            if m._hf_hook.execution_device is not None:
+                return m._hf_hook.execution_device
+
+        for p in m.parameters(recurse=False):
+            if not p.is_meta():
+                return p.device
+
+        for b in m.parameters(recurse=False):
+            if not b.is_meta():
+                return b.device
+
+    return None
 
 
 class CheckpointReentrant(torch.autograd.Function):
@@ -122,21 +169,6 @@ class skip_init(torch.overrides.TorchFunctionMode):
                 return args[0]
         else:
             return func(*args, **kwargs)
-
-
-@contextmanager
-def cpu_offload(module: nn.Module, device: torch.device):
-    r"""Moves a module to a device and offloads it to CPU upon exit.
-
-    Arguments:
-        module: The module to offload.
-        device: The target device.
-    """
-
-    try:
-        yield module.to(device=device)
-    finally:
-        module.cpu()
 
 
 def promote_dtype(f: Callable, min_dtype: torch.dtype = torch.float32) -> Callable:

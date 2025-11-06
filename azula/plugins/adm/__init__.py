@@ -36,7 +36,7 @@ from typing import Optional, Sequence
 from azula.debug import RaiseMock
 from azula.denoise import Denoiser, GaussianPosterior
 from azula.hub import download
-from azula.nn.utils import skip_init
+from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import Schedule, VPSchedule
 
 from ..utils import load_cards
@@ -131,7 +131,14 @@ class AblatedDenoiser(Denoiser):
         c_time = torch.searchsorted(self.sigmas, c_time.flatten())
         c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
-        output = self.backbone(c_in * x_t, c_time, y=label, **kwargs)
+        dtype = get_module_dtype(self.backbone)
+
+        output = self.backbone(
+            (c_in * x_t).to(dtype),
+            c_time,
+            y=label,
+            **kwargs,
+        ).to(x_t)
 
         if self.learn_var:
             output, log_var = torch.chunk(output, 2, dim=1)

@@ -31,7 +31,7 @@ from torch import Tensor
 from typing import Dict, Optional, Sequence, Tuple, Union
 
 from azula.denoise import Denoiser, DiracPosterior
-from azula.nn.utils import skip_init
+from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import DecaySchedule, Schedule
 
 from ..utils import as_dtype, load_cards
@@ -61,7 +61,7 @@ class AutoEncoder(nn.Module):
             A batch of latents :math:`z \sim E(x)`, with shape :math:`(B, 32, H / 32, W / 32)`.
         """
 
-        dtype = {"dtype": self.ae.dtype, "device": self.ae.device}
+        dtype = get_module_dtype(self.ae)
 
         z = self.ae.encode(x.to(**dtype)).latent
         z = z * self.scale
@@ -78,10 +78,10 @@ class AutoEncoder(nn.Module):
             A batch of images :math:`x = D(z)`, with shape :math:`(B, 3, H, W)`.
         """
 
-        dtype = {"dtype": self.ae.dtype, "device": self.ae.device}
+        dtype = get_module_dtype(self.ae)
 
         z = z / self.scale
-        x = self.ae.decode(z.to(**dtype)).sample
+        x = self.ae.decode(z.to(dtype)).sample
 
         return x.to(z)
 
@@ -148,12 +148,12 @@ class TextEncoder(nn.Module):
             return_tensors="pt",
         )
 
-        prompt_mask = tokens.attention_mask.to(device=self.gemma.device)
         prompt_embeds = self.gemma(
-            tokens.input_ids.to(device=self.gemma.device),
-            attention_mask=prompt_mask,
+            tokens.input_ids,
+            attention_mask=tokens.attention_mask,
             output_hidden_states=False,
         ).last_hidden_state
+        prompt_mask = tokens.attention_mask.to(prompt_embeds)
 
         select = [0, *range(-self.max_length + 1, 0)]
 
@@ -219,17 +219,17 @@ class SanaDenoiser(Denoiser):
         B, _, _, _ = z_t.shape
         _, L, D = prompt_embeds.shape
 
-        dtype = {"dtype": self.backbone.dtype, "device": self.backbone.device}
+        dtype = get_module_dtype(self.backbone)
 
         output = self.backbone(
-            timestep=c_time.to(**dtype).expand(B),
-            hidden_states=(c_in * z_t).to(**dtype),
-            encoder_hidden_states=prompt_embeds.to(**dtype).expand(B, L, D),
-            encoder_attention_mask=prompt_mask.to(**dtype).expand(B, L),
+            timestep=c_time.to(dtype).expand(B),
+            hidden_states=(c_in * z_t).to(dtype),
+            encoder_hidden_states=prompt_embeds.to(dtype).expand(B, L, D),
+            encoder_attention_mask=prompt_mask.to(dtype).expand(B, L),
             **kwargs,
-        ).sample
+        ).sample.to(z_t)
 
-        mean = c_skip * z_t + c_out * output.to(z_t)
+        mean = c_skip * z_t + c_out * output
 
         return DiracPosterior(mean=mean)
 

@@ -32,7 +32,7 @@ from torch import Tensor
 from typing import Dict, Optional, Sequence, Tuple, Union
 
 from azula.denoise import Denoiser, DiracPosterior
-from azula.nn.utils import skip_init
+from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import Schedule, VPSchedule
 
 from ..utils import as_dtype, load_cards
@@ -62,13 +62,13 @@ class AutoEncoder(nn.Module):
             A batch of latents :math:`z \sim q(Z \mid x)`, with shape :math:`(B, 4, H / 8, W / 8)`.
         """
 
-        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+        dtype = get_module_dtype(self.vae)
 
-        q_z_x = self.vae.encode(x.to(**dtype)).latent_dist
+        q_z_x = self.vae.encode(x.to(dtype)).latent_dist
         z = q_z_x.mean + q_z_x.std * torch.randn_like(q_z_x.mean)
         z = z * self.scale
 
-        return z
+        return z.to(x)
 
     def decode(self, z: Tensor) -> Tensor:
         r"""Decodes latents to images.
@@ -80,12 +80,12 @@ class AutoEncoder(nn.Module):
             A batch of images :math:`x = D(z)`, with shape :math:`(B, 3, H, W)`.
         """
 
-        dtype = {"dtype": self.vae.dtype, "device": self.vae.device}
+        dtype = get_module_dtype(self.vae)
 
         z = z / self.scale
-        x = self.vae.decode(z.to(**dtype)).sample
+        x = self.vae.decode(z.to(dtype)).sample
 
-        return x
+        return x.to(z)
 
 
 class TextEncoder(nn.Module):
@@ -122,12 +122,12 @@ class TextEncoder(nn.Module):
         )
 
         if getattr(self.clip.config, "use_attention_mask", False):
-            mask = tokens.attention_mask.to(device=self.clip.device)
+            mask = tokens.attention_mask
         else:
             mask = None
 
         embeds = self.clip(
-            input_ids=tokens.input_ids.to(device=self.clip.device),
+            input_ids=tokens.input_ids,
             attention_mask=mask,
             output_hidden_states=False,
         ).last_hidden_state
@@ -209,16 +209,16 @@ class StableDenoiser(Denoiser):
         B, _, _, _ = z_t.shape
         _, L, D = prompt_embeds.shape
 
-        dtype = {"dtype": self.backbone.dtype, "device": self.backbone.device}
+        dtype = get_module_dtype(self.backbone)
 
         output = self.backbone(
-            timestep=c_time.to(**dtype).expand(B),
-            sample=(c_in * z_t).to(**dtype),
-            encoder_hidden_states=prompt_embeds.to(**dtype).expand(B, L, D),
+            timestep=c_time.expand(B),
+            sample=(c_in * z_t).to(dtype),
+            encoder_hidden_states=prompt_embeds.to(dtype).expand(B, L, D),
             **kwargs,
-        ).sample
+        ).sample.to(z_t)
 
-        mean = c_skip * z_t + c_out * output.to(z_t)
+        mean = c_skip * z_t + c_out * output
 
         return DiracPosterior(mean=mean)
 

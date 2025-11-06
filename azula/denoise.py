@@ -41,6 +41,7 @@ from torch import Tensor
 from typing import Callable, Self
 
 from .linalg.covariance import Covariance, IsotropicCovariance
+from .nn.utils import get_module_dtype
 from .noise import Schedule
 
 
@@ -225,7 +226,15 @@ class PreconditionedDenoiser(Denoiser):
         c_time = torch.log(sigma_t / alpha_t).reshape_as(t)
         c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
-        mean = c_skip * x_t + c_out * self.backbone(c_in * x_t, c_time, **kwargs)
+        dtype = get_module_dtype(self.backbone)
+
+        output = self.backbone(
+            (c_in * x_t).to(dtype),
+            c_time.to(dtype),
+            **kwargs,
+        ).to(x_t)
+
+        mean = c_skip * x_t + c_out * output
         var = c_var
 
         return GaussianPosterior(mean=mean, var=var)

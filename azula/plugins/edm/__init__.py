@@ -36,6 +36,7 @@ from typing import Optional, Tuple
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
+from azula.nn.utils import get_module_dtype
 from azula.noise import Schedule
 
 from ..utils import load_cards
@@ -116,7 +117,14 @@ class ElucidatedDenoiser(Denoiser):
         c_in = 1 / alpha_t
         c_time = (sigma_t / alpha_t).reshape_as(t)
 
-        mean = self.backbone(c_in * x_t, c_time, class_labels=label, **kwargs)
+        dtype = get_module_dtype(self.backbone)
+
+        mean = self.backbone(
+            (c_in * x_t).to(dtype),
+            c_time.to(dtype),
+            class_labels=label.to(dtype),
+            **kwargs,
+        ).to(x_t)
 
         return DiracPosterior(mean=mean)
 
