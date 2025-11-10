@@ -82,14 +82,14 @@ def test_ViT(
 
     assert torch.allclose(y_vit, y_copy)
 
-    # BFloat16
-    vit.to(torch.bfloat16)
-    y16 = vit(x.to(torch.bfloat16), mod.to(torch.bfloat16))
+    # Float16
+    vit.to(torch.float16)
+    y16 = vit(x.to(torch.float16), mod.to(torch.float16))
 
     vit.to(torch.float32)
     y32 = vit(x.to(torch.float32), mod.to(torch.float32))
 
     err = (y32 - y16).abs().flatten()
 
-    assert torch.quantile(err, 0.99) < 1e-2
-    assert torch.max(err) < 1e-1
+    assert torch.quantile(err, 0.99) < 1e-3
+    assert torch.max(err) < 1e-2
