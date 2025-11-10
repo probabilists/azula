@@ -165,7 +165,7 @@ class GaussianDenoiser(Denoiser):
 
         alpha_t, sigma_t = self.schedule(t)
 
-        cov_t = IsotropicCovariance(sigma_t**2)
+        cov_t = IsotropicCovariance((sigma_t / alpha_t) ** 2)
         cov_inv = (self.cov + cov_t).inv
 
         mean = self.mean + self.cov(cov_inv(x_t / alpha_t - self.mean))
