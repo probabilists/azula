@@ -283,7 +283,7 @@ def load_model(
             **kwargs,
         )
 
-    patch_mmap_safetensors(pipe.text_encoder, pipe.text_encoder_2)
+    patch_mmap_safetensors(pipe.transformer, pipe.vae, pipe.text_encoder, pipe.text_encoder_2)
 
     denoiser = FluxDenoiser(backbone=pipe.transformer)
 

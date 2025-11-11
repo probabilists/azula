@@ -47,7 +47,7 @@ from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import Schedule
 
 from ..edm import ElucidatedSchedule
-from ..utils import load_cards, patch_diffusers
+from ..utils import load_cards, patch_diffusers, patch_mmap_safetensors
 
 
 class AutoEncoder(nn.Module):
@@ -188,6 +188,8 @@ def load_model(name: str) -> Tuple[Denoiser, AutoEncoder]:
 
     with skip_init(), patch_diffusers():
         vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse")
+
+    patch_mmap_safetensors(vae)
 
     autoencoder = content["encoder"]
     autoencoder = AutoEncoder(

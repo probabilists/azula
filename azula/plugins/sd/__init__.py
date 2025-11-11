@@ -249,7 +249,7 @@ def load_model(
             **kwargs,
         )
 
-    patch_mmap_safetensors(pipe.text_encoder)
+    patch_mmap_safetensors(pipe.unet, pipe.vae, pipe.text_encoder)
 
     alphas = pipe.scheduler.alphas_cumprod.to(dtype=torch.float64).sqrt()
     sigmas = torch.sqrt(1 - alphas**2)

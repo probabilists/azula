@@ -62,25 +62,11 @@ def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
 
 @contextmanager
 def patch_diffusers():
-    from safetensors.torch import load, load_file
     from tqdm import std
     from unittest.mock import patch
 
-    def monkey_load(checkpoint_file, *args, **kwargs):
-        if isinstance(checkpoint_file, dict):
-            return checkpoint_file
-        elif kwargs.get("map_location", "cpu") == "meta":
-            return load_file(checkpoint_file)
-        else:
-            with open(checkpoint_file, "rb") as f:
-                return load(f.read())
-
     with (
         patch("diffusers.utils.logging.tqdm_lib", std),
-        patch("diffusers.models.model_loading_utils.load_state_dict", monkey_load),
-        patch("diffusers.models.modeling_utils.load_state_dict", monkey_load),
-        patch("diffusers.loaders.single_file_utils.load_state_dict", monkey_load),
-        patch("diffusers.loaders.unet.load_state_dict", monkey_load),
         patch("transformers.utils.logging.tqdm_lib", std),
         patch("transformers.modeling_utils.logger.warning_once"),
         patch("transformers.models.t5.tokenization_t5_fast.logger.warning_once"),
@@ -91,7 +77,7 @@ def patch_diffusers():
 def patch_mmap_safetensors(*modules):
     for m in modules:
         for p in m.parameters():
-            p.data = p.data.clone()
+            p.data.sum()
 
         for b in m.buffers():
-            b.data = b.data.clone()
+            b.data.sum()
