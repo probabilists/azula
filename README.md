@@ -24,7 +24,7 @@ pip install git+https://github.com/probabilists/azula
 
 In Azula's formalism, a diffusion model is the composition of three elements: a noise schedule, a denoiser and a sampler.
 
-* A noise schedule is a mapping from a time $t \in [0, 1]$ to the signal scale $\alpha_t$ and the noise scale $\sigma_t$ in a perturbation kernel $p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X_t, \sigma_t^2 I)$ from a "clean" random variable $X \sim p(X)$ to a "noisy" random variable $X_t$.
+* A noise schedule is a mapping from a time $t \in [0, 1]$ to the signal scale $\alpha_t$ and the noise scale $\sigma_t$ in a perturbation kernel $p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X, \sigma_t^2 I)$ from a "clean" random variable $X \sim p(X)$ to a "noisy" random variable $X_t$.
 
 * A denoiser is a neural network trained to predict $X$ given $X_t$.
 
