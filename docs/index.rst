@@ -29,7 +29,7 @@ Getting started
 
 In Azula's formalism, a diffusion model is the composition of three elements: a noise schedule, a denoiser and a sampler.
 
-* A noise schedule is a mapping from a time :math:`t \in [0, 1]` to the signal scale :math:`\alpha_t` and the noise scale :math:`\sigma_t` in a perturbation kernel :math:`p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X_t, \sigma_t^2 I)` from a "clean" random variable :math:`X \sim p(X)` to a "noisy" random variable :math:`X_t`.
+* A noise schedule is a mapping from a time :math:`t \in [0, 1]` to the signal scale :math:`\alpha_t` and the noise scale :math:`\sigma_t` in a perturbation kernel :math:`p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X, \sigma_t^2 I)` from a "clean" random variable :math:`X \sim p(X)` to a "noisy" random variable :math:`X_t`.
 
 * A denoiser is a neural network trained to predict :math:`X` given :math:`X_t`.
 

@@ -3,7 +3,7 @@ r"""Reverse diffusion samplers.
 For a distribution :math:`p(X)` over :math:`\mathbb{R}^D`, the perturbation kernel (see
 :mod:`azula.noise`)
 
-.. math:: p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X_t, \sigma_t^2 I)
+.. math:: p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X, \sigma_t^2 I)
 
 defines a series of marginal distributions
 

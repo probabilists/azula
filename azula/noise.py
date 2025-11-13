@@ -4,7 +4,7 @@ A noise schedule is a mapping from a time :math:`t \in [0, 1]` to the signal sca
 :math:`\alpha_t \in \mathbb{R}_+` and the noise scale :math:`\sigma_t \in \mathbb{R}_+`
 in a perturbation kernel
 
-.. math:: p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X_t, \sigma_t^2 I)
+.. math:: p(X_t \mid X) = \mathcal{N}(X_t \mid \alpha_t X, \sigma_t^2 I)
 
 from a "clean" random variable :math:`X` to a "noisy" random variable :math:`X_t`. The
 only constraint is for the signal-to-noise (SNR) ratio :math:`\frac{\alpha_t}{\sigma_t}`
