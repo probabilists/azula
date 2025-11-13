@@ -80,6 +80,9 @@ def test_UNet(
     assert torch.allclose(y_unet, y_copy)
 
     # Float16
+    if torch.__version__ < "2.3":
+        return
+
     unet.to(torch.float16)
     y16 = unet(x.to(torch.float16), mod.to(torch.float16))
 

@@ -83,6 +83,9 @@ def test_ViT(
     assert torch.allclose(y_vit, y_copy)
 
     # Float16
+    if torch.__version__ < "2.3":
+        return
+
     vit.to(torch.float16)
     y16 = vit(x.to(torch.float16), mod.to(torch.float16))
 
