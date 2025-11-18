@@ -31,6 +31,7 @@ __all__ = [
     "HeunSampler",
     "ABSampler",
     "EABSampler",
+    "EAB2Sampler",
     "PCSampler",
 ]
 
@@ -349,6 +350,10 @@ class ABSampler(Sampler):
     Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
     t` such that
 
+    .. math:: \frac{d x_t}{dt} = \frac{d \sigma_t}{dt} z(x_t) = z(x_t)
+
+    and
+
     .. math:: x_s = x_t + \int_t^s z(x_u) \, du
 
     where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{t}`. The :math:`n`-th
@@ -387,7 +392,7 @@ class ABSampler(Sampler):
         self.order = order
 
     @staticmethod
-    def adams_bashforth(t: Tensor, n: int = 3) -> Tensor:
+    def adams_bashforth(t: Tensor, n: int) -> Tensor:
         r"""Returns the coefficients of the :math:`n`-th order Adams-Bashforth method.
 
         Arguments:
@@ -452,6 +457,10 @@ class EABSampler(Sampler):
     Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
     e^t` such that
 
+    .. math:: \frac{d x_t}{dt} = \frac{d \sigma_t}{dt} z(x_t) = e^t z(x_t)
+
+    and
+
     .. math:: x_s = x_t + \int_t^s e^u \, z(x_u) \, du
 
     where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{e^t}`. The :math:`n`-th
@@ -483,14 +492,14 @@ class EABSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, order: int = 3, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
         self.order = order
 
     @staticmethod
-    def exponential_adams_bashforth(t: Tensor, n: int = 3) -> Tensor:
+    def exponential_adams_bashforth(t: Tensor, n: int) -> Tensor:
         r"""Returns the coefficients of the :math:`n`-th order exponential Adams-Bashforth method.
 
         Arguments:
@@ -546,6 +555,116 @@ class EABSampler(Sampler):
             integral = sum(b * c for b, c in zip(buffer, coeffs))
 
             x_s = alpha_s / alpha_t * x_t + alpha_s * integral
+            x_t = x_s
+
+        x = x_t
+
+        return x
+
+
+class EAB2Sampler(Sampler):
+    r"""Creates an exponential Adams-Bashforth (EAB) multi-step sampler with data prediction as non-linear term.
+
+    Note:
+        This sampler is a multi-step generalization of the DPM-Solver++ sampler from Cheng
+        Lu's `dpm-solver <https://github.com/LuChengTHU/dpm-solver>`_.
+
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    e^t` such that
+
+    .. math:: \frac{d x_t}{dt} = \frac{d \sigma_t}{dt} \frac{x_t - x(x_t)}{\sigma_t} = x_t - x(x_t)
+
+    and
+
+    .. math:: x_s = \frac{e^s}{e^t} x_t - e^s \int_t^s e^{-u} \, x(x_u) \, du
+
+    where :math:`x(x_t) = \mathbb{E}[X \mid x_t]`. The :math:`n`-th order exponential
+    Adams-Bashforth step for this integral is
+
+    .. math:: x_s \gets \frac{e^s}{e^t} x_t + e^s \sum_{i=0}^{n-1} x(x_{t_i}) \int_t^s e^{-u} \, \ell_i(u) \, du
+
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(t)` form
+    their Lagrange basis.
+
+    .. math:: \ell_i(t_j) = \sum_{k=0}^{n-1} a_{ik} \, t_j^k = \delta_{ij}
+
+    Therefore, the exponential Adams-Bashforth coefficients are
+
+    .. math:: \int_t^s e^{-u} \, \ell_i(u) \, du
+        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s e^{-u} \, u^k \, du \\
+        & = \sum_{k=0}^{n-1} a_{ik} \left[ -k! \, e^{-u} \sum_{j=0}^k \frac{u^j}{j!} \right]_t^s
+
+    References:
+        | Exponential Adams Bashforth ODE solver for stiff problems (Coudière et al., 2018)
+        | https://arxiv.org/abs/1804.09927
+
+        | DPM-Solver++: Fast Solver for Guided Sampling of Diffusion Probabilistic Models (Lu et al., 2022)
+        | https://arxiv.org/abs/2211.01095
+
+    Arguments:
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
+        order: The order :math:`n` of the multi-step method.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+        self.order = order
+
+    @staticmethod
+    def exponential_adams_bashforth(t: Tensor, n: int) -> Tensor:
+        r"""Returns the coefficients of the :math:`n`-th order exponential Adams-Bashforth method.
+
+        Arguments:
+            t: The integration variable, with shape :math:`(m + 1)`.
+            n: The method order :math:`n \leq m`.
+
+        Returns:
+            The coefficients, with shape :math:`(n)`.
+        """
+
+        m = len(t) - 1
+        n = min(n, m)
+        k = torch.arange(n, dtype=torch.float64, device=t.device)
+        k_fact = torch.lgamma(k + 1).exp()
+
+        # Vandermonde matrix t_i^k
+        V = t[m - n : m] ** k[:, None]
+
+        # Integral of exp(-u) u^k from t_{m-1} to t_m
+        b = -k_fact * (
+            torch.exp(-t[m]) * torch.cumsum(t[m] ** k / k_fact, dim=0)
+            - torch.exp(-t[m - 1]) * torch.cumsum(t[m - 1] ** k / k_fact, dim=0)
+        )
+
+        return torch.linalg.solve(V, b).to(dtype=t.dtype)
+
+    @torch.no_grad()
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
+        time = self.timesteps.to(device=x.device)
+        alpha, sigma = self.denoiser.schedule(time)
+        log_rho = sigma.log() - alpha.log()
+
+        x_t = x
+
+        buffer = []
+
+        for i, t in enumerate(self.progress_bar(time[:-1])):
+            sigma_t = sigma[i]
+            sigma_s = sigma[i + 1]
+
+            q_t = self.denoiser(x_t, t, **kwargs)
+
+            buffer.append(q_t.mean)
+            if len(buffer) > self.order:
+                buffer.pop(0)
+
+            coeffs = self.exponential_adams_bashforth(log_rho[: i + 2], n=self.order)
+            integral = sum(b * c for b, c in zip(buffer, coeffs))
+
+            x_s = sigma_s / sigma_t * x_t - sigma_s * integral
             x_t = x_s
 
         x = x_t
