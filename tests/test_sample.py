@@ -12,13 +12,16 @@ from azula.denoise import KarrasDenoiser
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
 from azula.sample import (
-    ABSampler,
     DDIMSampler,
     DDPMSampler,
-    EABSampler,
     EulerSampler,
     HeunSampler,
     PCSampler,
+    REABSampler,
+    vABSampler,
+    xEABSampler,
+    zABSampler,
+    zEABSampler,
 )
 
 
@@ -58,18 +61,21 @@ def test_samplers(with_label: bool, batch: Sequence[int], channels: int):
     )
 
     Ss = [
-        partial(DDPMSampler, steps=64),
-        partial(DDIMSampler, steps=64, eta=0.0),
-        partial(DDIMSampler, steps=64, eta=1.0),
-        partial(EulerSampler, steps=64),
-        partial(HeunSampler, steps=64),
-        partial(ABSampler, steps=64, order=3),
-        partial(EABSampler, steps=64, order=3),
-        partial(PCSampler, steps=64, corrections=1),
+        partial(DDPMSampler),
+        partial(DDIMSampler, eta=0.0),
+        partial(DDIMSampler, eta=1.0),
+        partial(EulerSampler),
+        partial(HeunSampler),
+        partial(zABSampler),
+        partial(vABSampler),
+        partial(zEABSampler),
+        partial(xEABSampler),
+        partial(REABSampler),
+        partial(PCSampler, corrections=1),
     ]
 
     for S in Ss:
-        sampler = S(denoiser)
+        sampler = S(denoiser, steps=64)
 
         x1 = sampler.init((*batch, channels))
 

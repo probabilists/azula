@@ -34,6 +34,7 @@ extensions = [
 autodoc_default_options = {
     "members": True,
     "member-order": "bysource",
+    "special-members": "__call__",
 }
 autodoc_inherit_docstrings = False
 autodoc_typehints = "description"
