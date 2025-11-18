@@ -9,7 +9,7 @@ from torch.distributions import Normal
 from typing import Any, Sequence
 
 from azula.denoise import GaussianDenoiser, GaussianPosterior, KarrasDenoiser, Posterior
-from azula.linalg.covariance import DPLRCovariance, PreconditionedCovariance
+from azula.linalg.covariance import DPLRCovariance, KroneckerCovariance
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
 
@@ -70,7 +70,7 @@ def test_GaussianDenoiser(cov: str, batch: Sequence[int], channels: int):
     if cov == "dplr":
         cov = DPLRCovariance.from_data(data, rank=3)
     elif cov == "precond":
-        cov = PreconditionedCovariance.from_data(data, rank=0)
+        cov = KroneckerCovariance.from_data(data, rank=0)
 
     denoiser = GaussianDenoiser(mean, cov, schedule=VPSchedule())
 
