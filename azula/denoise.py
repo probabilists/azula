@@ -31,6 +31,7 @@ __all__ = [
     "Denoiser",
     "GaussianDenoiser",
     "KarrasDenoiser",
+    "JiTDenoiser",
 ]
 
 import abc
@@ -266,3 +267,84 @@ class KarrasDenoiser(Denoiser):
         q = self(x_t, t, **kwargs)
 
         return ((q.mean - x).square() / q.var.detach()).mean()
+
+
+class JiTDenoiser(Denoiser):
+    r"""Creates a JiT Denoiser.
+
+    The model predicts the clean image :math:`\mathbf{x}_{\text{pred}}`, but is optimized using a velocity loss
+    based on the :math:`\mathbf{v}` vector, where :math:`\mathbf{v}_{\text{pred}} = (\mathbf{x}_{\text{pred}} - \mathbf{z}) / \sigma`:
+
+    References:
+        | Back to Basics: Let Denoising Generative Models Denoise (Li and He, 2025)
+        | https://arxiv.org/abs/2511.13720
+
+    Arguments:
+        backbone: A noise/time conditional network :math:`\mathbf{b}_\phi(\mathbf{z}, \mathbf{t})`.
+        schedule: The noise schedule returning :math:`\alpha` and :math:`\sigma`.
+        t_eps: Small epsilon to avoid division by zero.
+        noise\_scale: Scale of the noise added during training.
+    """
+
+    def __init__(
+        self,
+        backbone: nn.Module,
+        schedule: nn.Module,
+        t_eps: float = 1e-5,
+        noise_scale: float = 1.0,
+    ):
+        super().__init__()
+        self.backbone = backbone
+        self.schedule = schedule
+        self.t_eps = t_eps
+        self.noise_scale = noise_scale
+
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> Tensor:
+        r"""
+        Arguments:
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            DiracPosterior where mean is the predicted x.
+        """
+        output = self.backbone(x_t, t, **kwargs)
+        return DiracPosterior(mean=output)
+
+    def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
+        r"""Computes the JiT velocity loss.
+
+        The loss is computed as (Equation 6 from Section 4.3):
+
+        .. math:: \mathcal{L} = \mathbb{E}_{t, x, \epsilon} \left\lVert v_{\theta}(\mathbf{z}_t, t) - \mathbf{v} \right\rVert^{2}
+
+        where :math:`\mathbf{v}` is the target velocity, and the predicted velocity :math:`v_{\theta}` is defined by:
+
+        .. math:: v_{\theta}(\mathbf{z}_t, t) = \left( \operatorname{net}_{\theta}(\mathbf{z}_t, t) - \mathbf{z}_t \right) / (1 - t)
+
+        Arguments:
+            x: A clean tensor :math:`x`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`(B)`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            The computed velocity loss.
+        """
+        alpha, sigma = self.schedule(t)
+
+        while alpha.ndim < x.ndim:
+            alpha, sigma = alpha[..., None], sigma[..., None]
+
+        e = torch.randn_like(x) * self.noise_scale
+        z = alpha * x + sigma * e
+
+        v_target = (x - z) / sigma.clamp_min(self.t_eps)
+
+        x_pred = self(z, t, **kwargs).mean
+
+        v_pred = (x_pred - z) / sigma.clamp_min(self.t_eps)
+
+        loss = (v_target - v_pred) ** 2
+
+        return loss.mean()

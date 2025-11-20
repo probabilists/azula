@@ -8,7 +8,14 @@ from torch import Tensor
 from torch.distributions import Normal
 from typing import Any, Sequence
 
-from azula.denoise import GaussianDenoiser, GaussianPosterior, KarrasDenoiser, Posterior
+from azula.denoise import (
+    GaussianDenoiser,
+    GaussianPosterior,
+    KarrasDenoiser,
+    JiTDenoiser,
+    Posterior,
+    DiracPosterior,
+)
 from azula.linalg.covariance import DPLRCovariance, PreconditionedCovariance
 from azula.nn.embedding import SineEncoding
 from azula.noise import VPSchedule
@@ -105,6 +112,47 @@ def test_KarrasDenoiser(with_label: bool, batch: Sequence[int], channels: int):
     assert isinstance(q, GaussianPosterior)
     assert q.mean.shape == x.shape
     assert q.var.expand(x.shape).shape == x.shape
+
+    # Loss
+    if with_label:
+        loss = denoiser.loss(x, t, label="cat")
+    else:
+        loss = denoiser.loss(x, t)
+
+    assert loss.shape == ()
+    assert loss.requires_grad
+
+    loss.mean().backward()
+
+    for p in denoiser.parameters():
+        assert p.grad is not None
+        assert torch.all(torch.isfinite(p.grad))
+
+
+@pytest.mark.parametrize("with_label", [False, True])
+@pytest.mark.parametrize("batch", [(), (64,)])
+@pytest.mark.parametrize("channels", [5])
+def test_JiTDenoiser(with_label: bool, batch: Sequence[int], channels: int):
+    class JitSchedule(nn.Module):
+        def forward(self, t: Tensor):
+            return t, 1 - t
+
+    denoiser = JiTDenoiser(
+        backbone=Dummy(channels, with_label),
+        schedule=JitSchedule(),
+    )
+
+    # Forward
+    x = torch.randn(*batch, channels)
+    t = torch.sigmoid(torch.randn(batch) * 0.8 + 0.8)
+
+    if with_label:
+        q = denoiser(x, t, label="cat")
+    else:
+        q = denoiser(x, t)
+
+    assert isinstance(q, DiracPosterior)
+    assert q.mean.shape == x.shape
 
     # Loss
     if with_label:
