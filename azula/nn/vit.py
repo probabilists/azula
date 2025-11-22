@@ -23,7 +23,7 @@ from typing import Optional, Sequence, Union
 
 from .attention import MultiheadSelfAttention
 from .embedding import SineEncoding
-from .layers import Patchify, Unpatchify
+from .layers import Patchify, ReLU2, SwiGLU, Unpatchify
 from .utils import checkpoint
 
 
@@ -34,6 +34,8 @@ class ViTBlock(nn.Module):
         channels: The number of channels :math:`C`.
         mod_features: The number of modulating features :math:`D`.
         ffn_factor: The channel factor in the FFN.
+        ffn_activation: The activation function in the FFN. Options are `relu`, `relu2`,
+            `silu` and `swiglu`.
         spatial: The number of spatial dimensinons :math:`N`. Only necessary with RoPE.
         rope: Whether to use rotary positional embedding (RoPE) or not.
         dropout: The dropout rate in :math:`[0, 1]`.
@@ -46,6 +48,7 @@ class ViTBlock(nn.Module):
         channels: int,
         mod_features: int = 0,
         ffn_factor: int = 4,
+        ffn_activation: str = "silu",
         spatial: int = 2,
         rope: bool = True,
         dropout: Optional[float] = None,
@@ -85,11 +88,25 @@ class ViTBlock(nn.Module):
             self.theta = None
 
         # FFN
+        activation_factor = 1
+
+        if ffn_activation == "relu":
+            activation = nn.ReLU()
+        elif ffn_activation == "relu2":
+            activation = ReLU2()
+        elif ffn_activation == "silu":
+            activation = nn.SiLU()
+        elif ffn_activation == "swiglu":
+            activation = SwiGLU()
+            activation_factor = 2
+        else:
+            raise ValueError(f"Unknown activation '{ffn_activation}'.")
+
         self.ffn = nn.Sequential(
             nn.Linear(channels, ffn_factor * channels),
-            nn.SiLU(),
+            activation,
             nn.Identity() if dropout is None else nn.Dropout(dropout),
-            nn.Linear(ffn_factor * channels, channels),
+            nn.Linear(ffn_factor * channels // activation_factor, channels),
         )
 
     def _forward(

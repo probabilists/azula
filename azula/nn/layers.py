@@ -3,6 +3,7 @@ r"""Common layers."""
 __all__ = [
     "ConvNd",
     "ReLU2",
+    "SwiGLU",
     "LayerNorm",
     "RMSNorm",
     "Patchify",
@@ -77,7 +78,39 @@ class ReLU2(nn.Module):
     """
 
     def forward(self, x: Tensor) -> Tensor:
-        return torch.nn.functional.relu(x).square()
+        return relu2(x)
+
+
+def relu2(x: Tensor, /) -> Tensor:
+    return torch.nn.functional.relu(x).square()
+
+
+class SwiGLU(nn.Module):
+    r"""Creates a SwiGLU activation layer.
+
+    .. math:: y = x_1 \times x_2 \times \sigma(x_2)
+
+    References:
+        | GLU Variants Improve Transformer (Shazeer, 2020)
+        | https://arxiv.org/abs/2002.05202
+    """
+
+    def forward(self, x: Tensor) -> Tensor:
+        r"""
+        Arguments:
+            x: The input tensor :math:`x`, with shape :math:`(*, 2C)`.
+
+        Returns:
+            The output tensor :math:`y`, with shape :math:`(*, C)`.
+        """
+
+        return swiglu(x)
+
+
+def swiglu(x: Tensor, /) -> Tensor:
+    x = x.unflatten(-1, (-1, 2))
+    x1, x2 = x[..., 0], x[..., 1]
+    return x1 * torch.nn.functional.silu(x2)
 
 
 class LayerNorm(nn.Module):
@@ -97,7 +130,7 @@ class LayerNorm(nn.Module):
     def __init__(self, dim: Union[int, Sequence[int]], eps: float = 1e-5):
         super().__init__()
 
-        self.dim = dim if isinstance(dim, int) else tuple(dim)
+        self.dim = dim
         self.eps = eps
 
     def extra_repr(self) -> str:
@@ -116,7 +149,7 @@ class LayerNorm(nn.Module):
 
 
 @promote_dtype
-def layer_norm(x: Tensor, /, dim: Sequence[int], eps: float = 1e-5) -> Tensor:
+def layer_norm(x: Tensor, /, dim: int = -1, eps: float = 1e-5) -> Tensor:
     v, m = torch.var_mean(x, dim=dim, keepdim=True)
     return (x - m) * torch.rsqrt(v + eps)
 
@@ -138,7 +171,7 @@ class RMSNorm(nn.Module):
     def __init__(self, dim: Union[int, Sequence[int]], eps: float = 1e-5):
         super().__init__()
 
-        self.dim = dim if isinstance(dim, int) else tuple(dim)
+        self.dim = dim
         self.eps = eps
 
     def extra_repr(self) -> str:
@@ -157,7 +190,7 @@ class RMSNorm(nn.Module):
 
 
 @promote_dtype
-def rms_norm(x: Tensor, /, dim: Sequence[int], eps: float = 1e-5) -> Tensor:
+def rms_norm(x: Tensor, /, dim: int = -1, eps: float = 1e-5) -> Tensor:
     return x * torch.rsqrt(torch.mean(torch.square(x), dim=dim, keepdim=True) + eps)
 
 
