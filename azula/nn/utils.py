@@ -140,7 +140,9 @@ def checkpoint(f: Callable, reentrant: bool = False) -> Callable:
             args = (next(it if include else io) for include in mask)
             return f(*args, **kwargs)
 
-        if reentrant:
+        if any(map(is_gradtrackingtensor, tensors)):
+            return h(*tensors)
+        elif reentrant:
             if tensors:
                 return CheckpointReentrant.apply(h, *tensors)
             else:
