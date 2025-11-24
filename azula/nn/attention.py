@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 
 from einops import rearrange
-from torch import Tensor
+from torch import BoolTensor, Tensor
 from torch.utils.checkpoint import checkpoint
 from typing import Optional, Tuple
 
@@ -23,6 +23,10 @@ class MultiheadSelfAttention(nn.Module):
         channels: The number of channels :math:`H \times C`.
         attention_heads: The number of attention heads :math:`H`.
         qk_norm: Whether to use query-key RMS-normalization or not.
+        rpb: Whether to use relative positional bias (RPB) or not.
+        rope: Whether to use rotary positional embedding (RoPE) or not.
+        pos_features: The number of positional features :math:`P`.
+            Only necessary with RPB and RoPE.
         dropout: The dropout rate in :math:`[0, 1]`.
         checkpointing: Whether to use gradient checkpointing or not.
     """
@@ -32,6 +36,9 @@ class MultiheadSelfAttention(nn.Module):
         channels: int,
         attention_heads: int = 1,
         qk_norm: bool = True,
+        rpb: bool = False,
+        rope: bool = False,
+        pos_features: Optional[int] = None,
         dropout: Optional[float] = None,
         checkpointing: bool = False,
     ):
@@ -54,6 +61,19 @@ class MultiheadSelfAttention(nn.Module):
         else:
             self.qk_norm = nn.Identity()
 
+        if rpb:
+            self.bias_proj = nn.Linear(pos_features, pos_features * attention_heads)
+            self.bias_proj.weight.data.mul_(1e-1)
+            self.bias_proj.bias.data.fill_(0.0)
+        else:
+            self.bias_proj = None
+
+        if rope:
+            self.theta_proj = nn.Linear(pos_features, channels // 2, bias=False)
+            self.theta_proj.weight.data.mul_(1e-1)
+        else:
+            self.theta_proj = None
+
         self.heads = attention_heads
         self.dropout = 0.0 if dropout is None else dropout
         self.checkpointing = checkpointing
@@ -61,14 +81,29 @@ class MultiheadSelfAttention(nn.Module):
     def _forward(
         self,
         x: Tensor,
-        theta: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
+        pos: Optional[Tensor] = None,
+        mask: Optional[BoolTensor] = None,
     ) -> Tensor:
         qkv = self.qkv_proj(x)
         q, k, v = rearrange(qkv, "... L (n H C) -> n ... H L C", n=3, H=self.heads)
         q, k = self.qk_norm(q), self.qk_norm(k)
 
-        if theta is not None:
+        if self.bias_proj is not None:
+            p = torch.nn.functional.linear(pos, self.bias_proj.weight)
+            p = rearrange(p, "... L (H P) -> ... H L P", H=self.heads)
+
+            bias = -distance_matrix(
+                x=p,
+                y=p + self.bias_proj.bias.reshape(self.heads, 1, -1),
+            )
+
+            if mask is not None:
+                bias = torch.where(mask, bias, float("-inf"))
+        else:
+            bias = mask
+
+        if self.theta_proj is not None:
+            theta = self.theta_proj(pos)
             theta = rearrange(theta, "... L (H C) -> ... H L C", H=self.heads)
             q, k = apply_rope(q, k, theta)
 
@@ -76,7 +111,7 @@ class MultiheadSelfAttention(nn.Module):
             query=q,
             key=k,
             value=v,
-            attn_mask=mask,
+            attn_mask=bias,
             dropout_p=self.dropout if self.training else 0.0,
         )
 
@@ -94,8 +129,7 @@ class MultiheadSelfAttention(nn.Module):
         r"""
         Arguments:
             x: The input tokens :math:`x`, with shape :math:`(*, L, H \times C)`.
-            theta: Optional rotary positional embedding :math:`\theta`,
-                with shape :math:`(*, L, H \times C / 2)`.
+            pos: Optional position vectors :math:`p`, with shape :math:`(*, L, P)`.
             mask: Optional attention mask, with shape :math:`(L, L)`.
 
         Returns:
@@ -106,6 +140,26 @@ class MultiheadSelfAttention(nn.Module):
             return checkpoint(self._forward, reentrant=not self.training)(x, theta, mask)
         else:
             return self._forward(x, theta, mask)
+
+
+def distance_matrix(x: Tensor, y: Tensor) -> Tensor:
+    r"""
+    .. math:: d_ij = ||x_i - y_j||_2^2
+
+    Arguments:
+        x: A list of points :math:`x_i`, with shape :math:`(*, M, P)`.
+        y: A list of points :math:`y_j`, with shape :math:`(*, N, P)`.
+
+    Returns:
+        The distance matrix :math:`d_ij`, with shape :math:`(*, M, N)`.
+    """
+
+    x2 = x[..., :, None, :].square().sum(dim=-1)
+    y2 = y[..., None, :, :].square().sum(dim=-1)
+
+    xy = torch.einsum("...ik,...jk->...ij", x, y)
+
+    return x2 + y2 - 2 * xy
 
 
 @promote_dtype
@@ -119,12 +173,12 @@ def apply_rope(q: Tensor, k: Tensor, theta: Tensor) -> Tuple[Tensor, Tensor]:
         | https://arxiv.org/abs/2403.13298
 
     Arguments:
-        q: The query tokens :math:`q`, with shape :math:`(*, C)`.
-        k: The key tokens :math:`k`, with shape :math:`(*, C)`.
+        q: The query vectors :math:`q`, with shape :math:`(*, C)`.
+        k: The key vectors :math:`k`, with shape :math:`(*, C)`.
         theta: Rotary angles, with shape :math:`(*, C / 2)`.
 
     Returns:
-        The rotated query and key tokens, with shape :math:`(*, C)`.
+        The rotated query and key vectors, with shape :math:`(*, C)`.
     """
 
     q = q.unflatten(-1, (-1, 2))
