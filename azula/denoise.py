@@ -30,6 +30,7 @@ __all__ = [
     "GaussianPosterior",
     "Denoiser",
     "GaussianDenoiser",
+    "SimpleDenoiser",
     "KarrasDenoiser",
 ]
 
@@ -134,7 +135,7 @@ class GaussianDenoiser(Denoiser):
     Arguments:
         mean: The mean vector :math:`\mu_x`, with shape :math:`(N_1, ..., N_d)`.
         cov: The covariance matrix :math:`\Sigma_x`, with shape
-            :math:`(N_1, N_1, ..., N_d, N_d)`.
+            :math:`(N_1, ..., N_d, N_1, \dots, N_d)`.
     """
 
     def __init__(self, mean: Tensor, cov: Covariance, schedule: Schedule):
@@ -173,13 +174,97 @@ class GaussianDenoiser(Denoiser):
         return DiracPosterior(mean=mean)
 
 
+class SimpleDenoiser(Denoiser):
+    r"""Creates a denoiser with simple preconditioning.
+
+    .. math::
+        \mu_\phi(x_t) = b_\phi(c_\mathrm{in}(t) \, x_t, c_\mathrm{time}(t))
+
+    The preconditioning coefficients make the backbone independent of the noise
+    schedule. Therefore, the latter can be replaced at any time.
+
+    .. math::
+        c_\mathrm{in}(t) & = \frac{1}{\sqrt{\alpha_t^2 + \sigma_t^2}} \\
+        c_\mathrm{time}(t) & = \log \frac{\sigma_t}{\alpha_t}
+
+    Arguments:
+        backbone: A noise/time conditional network :math:`b_\phi(x_t, t)`.
+        schedule: A noise schedule.
+    """
+
+    def __init__(self, backbone: nn.Module, schedule: Schedule):
+        super().__init__()
+
+        self.backbone = backbone
+        self.schedule = schedule
+
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> GaussianPosterior:
+        r"""
+        Arguments:
+            x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`()` or :math:`(B)`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            The Dirac delta :math:`\delta(X - \mu_\phi(x_t))`.
+        """
+
+        alpha_t, sigma_t = self.schedule(t)
+
+        while alpha_t.ndim < x_t.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
+
+        c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_time = torch.log(sigma_t / alpha_t).reshape_as(t)
+
+        dtype = get_module_dtype(self.backbone)
+
+        output = self.backbone(
+            (c_in * x_t).to(dtype),
+            c_time.to(dtype),
+            **kwargs,
+        ).to(x_t)
+
+        mean = output
+
+        return DiracPosterior(mean=mean)
+
+    def loss(self, x: Tensor, t: Tensor, max_weight: float = 1e4, **kwargs) -> Tensor:
+        r"""
+        Arguments:
+            x: A clean tensor :math:`x`, with shape :math:`(B, *)`.
+            t: The time :math:`t`, with shape :math:`(B)`.
+            kwargs: Optional keyword arguments.
+
+        Returns:
+            The weighted loss
+
+            .. math:: \frac{\alpha_t^2 + \sigma_t^2}{\sigma_t^2} || \mu_\phi(x_t) - x ||^2
+
+            where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(B, *)`.
+        """
+
+        alpha_t, sigma_t = self.schedule(t)
+
+        while alpha_t.ndim < x.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
+
+        z = torch.randn_like(x)
+        x_t = alpha_t * x + sigma_t * z
+
+        q = self(x_t, t, **kwargs)
+
+        w_t = (alpha_t / sigma_t) ** 2 + 1
+        w_t = torch.clip(w_t, max=max_weight)
+
+        return (w_t * (q.mean - x).square()).mean()
+
+
 class KarrasDenoiser(Denoiser):
     r"""Creates a Gaussian denoiser with EDM-style preconditioning.
 
-    .. math::
-        \mu_\phi(x_t) & = c_\mathrm{skip}(t) \, x_t +
-            c_\mathrm{out}(t) \, b_\phi(c_\mathrm{in}(t) \, x_t, c_\mathrm{time}(t)) \\
-        \sigma^2_\phi(x_t) & = \frac{\sigma_t^2}{\alpha_t^2 + \sigma_t^2}
+    .. math:: \mu_\phi(x_t) = c_\mathrm{skip}(t) \, x_t +
+        c_\mathrm{out}(t) \, b_\phi(c_\mathrm{in}(t) \, x_t, c_\mathrm{time}(t))
 
     The preconditioning coefficients are generalized to take the scale :math:`\alpha_t`
     into account.
@@ -205,7 +290,7 @@ class KarrasDenoiser(Denoiser):
         self.backbone = backbone
         self.schedule = schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> GaussianPosterior:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
@@ -213,7 +298,7 @@ class KarrasDenoiser(Denoiser):
             kwargs: Optional keyword arguments.
 
         Returns:
-            The Gaussian :math:`\mathcal{N}(X \mid \mu_\phi(x_t), \Sigma_\phi(x_t))`.
+            The Dirac delta :math:`\delta(X - \mu_\phi(x_t))`.
         """
 
         alpha_t, sigma_t = self.schedule(t)
@@ -225,7 +310,6 @@ class KarrasDenoiser(Denoiser):
         c_out = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_skip = alpha_t / (alpha_t**2 + sigma_t**2)
         c_time = torch.log(sigma_t / alpha_t).reshape_as(t)
-        c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 
         dtype = get_module_dtype(self.backbone)
 
@@ -236,9 +320,8 @@ class KarrasDenoiser(Denoiser):
         ).to(x_t)
 
         mean = c_skip * x_t + c_out * output
-        var = c_var
 
-        return GaussianPosterior(mean=mean, var=var)
+        return DiracPosterior(mean=mean)
 
     def loss(self, x: Tensor, t: Tensor, **kwargs) -> Tensor:
         r"""
@@ -250,7 +333,7 @@ class KarrasDenoiser(Denoiser):
         Returns:
             The weighted loss
 
-            .. math:: \frac{1}{\sigma^2_\phi(x_t)} || \mu_\phi(x_t) - x ||^2
+            .. math:: \frac{\alpha_t^2 + \sigma_t^2}{\sigma_t^2} || \mu_\phi(x_t) - x ||^2
 
             where :math:`x_t \sim p(X_t \mid x)`, with shape :math:`(B, *)`.
         """
@@ -265,4 +348,6 @@ class KarrasDenoiser(Denoiser):
 
         q = self(x_t, t, **kwargs)
 
-        return ((q.mean - x).square() / q.var.detach()).mean()
+        w_t = (alpha_t / sigma_t) ** 2 + 1
+
+        return (w_t * (q.mean - x).square()).mean()

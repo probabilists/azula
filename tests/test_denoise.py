@@ -102,9 +102,8 @@ def test_KarrasDenoiser(with_label: bool, batch: Sequence[int], channels: int):
     else:
         q = denoiser(x, t)
 
-    assert isinstance(q, GaussianPosterior)
+    assert isinstance(q, Posterior)
     assert q.mean.shape == x.shape
-    assert q.var.expand(x.shape).shape == x.shape
 
     # Loss
     if with_label:
