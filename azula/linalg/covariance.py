@@ -4,10 +4,11 @@ from __future__ import annotations
 
 __all__ = [
     "Covariance",
-    "DiagonalCovariance",
     "IsotropicCovariance",
+    "DiagonalCovariance",
+    "FullCovariance",
     "DPLRCovariance",
-    "PreconditionedCovariance",
+    "KroneckerCovariance",
 ]
 
 import abc
@@ -62,7 +63,10 @@ class Covariance(abc.ABC):
 
 
 class IsotropicCovariance(Covariance):
-    r"""Isotropic covariance matrix."""
+    r"""Isotropic covariance matrix.
+
+    .. math:: \lambda I
+    """
 
     lmbda: Tensor
 
@@ -95,7 +99,10 @@ class IsotropicCovariance(Covariance):
 
 
 class DiagonalCovariance(Covariance):
-    r"""Diagonal covariance matrix."""
+    r"""Diagonal covariance matrix.
+
+    .. math:: \mathrm{diag}(D)
+    """
 
     D: Tensor
 
@@ -131,8 +138,62 @@ class DiagonalCovariance(Covariance):
         return DiagonalCovariance(1 / self.D)
 
 
+class FullCovariance(Covariance):
+    r"""Full covariance matrix.
+
+    .. math:: C
+    """
+
+    C: Tensor
+
+    def __init__(self, C: Tensor):
+        self.C = C
+
+    @classmethod
+    @torch.no_grad()
+    def from_data(self, X: Tensor) -> FullCovariance:
+        samples, *_ = X.shape
+
+        C = torch.cov(X.reshape(samples, -1).T)
+
+        return FullCovariance(C)
+
+    def __add__(self, other: Covariance) -> FullCovariance:
+        I = torch.eye(*self.C.shape, dtype=self.C.dtype, device=self.C.device)
+
+        if isinstance(other, IsotropicCovariance):
+            return FullCovariance(self.C + other.lmbda * I)
+        elif isinstance(other, DiagonalCovariance):
+            return FullCovariance(self.C + torch.diag_embed(other.D.flatten()))
+        else:
+            return NotImplemented
+
+    def __mul__(self, other: Covariance) -> FullCovariance:
+        if isinstance(other, IsotropicCovariance):
+            return FullCovariance(self.C * other.lmbda)
+        else:
+            return NotImplemented
+
+    def __matmul__(self, x: Tensor) -> Tensor:
+        X = x.reshape(-1, self.C.shape[0])
+
+        X = torch.einsum("ij,...j->...i", self.C, X)
+
+        return X.reshape_as(x)
+
+    @property
+    def inv(self) -> FullCovariance:
+        return FullCovariance(torch.linalg.inv(self.C))
+
+
 class DPLRCovariance(Covariance):
-    r"""Diagonal plus low-rank (DPLR) covariance matrix."""
+    r"""Diagonal plus low-rank (DPLR) covariance matrix.
+
+    .. math:: \mathrm{diag}(D) + V \Sigma V^\top
+
+    Wikipedia:
+        https://wikipedia.org/wiki/Low-rank_approximation
+    """
 
     D: Tensor
     V: Tensor
@@ -202,7 +263,7 @@ class DPLRCovariance(Covariance):
             return NotImplemented
 
     def __matmul__(self, x: Tensor) -> Tensor:
-        X = x.reshape(-1, *self.V.shape[1:])
+        X = x.reshape(-1, *self.D.shape)
 
         X = self.D * X + torch.einsum(
             "i...,i,ni->n...", self.V, self.S, torch.einsum("i...,n...->ni", self.V, X)
@@ -230,8 +291,16 @@ class DPLRCovariance(Covariance):
         return DPLRCovariance(D, V, S)
 
 
-class PreconditionedCovariance(Covariance):
-    r"""Preconditioned covariance matrix."""
+class KroneckerCovariance(Covariance):
+    r"""Kronecker-factorized covariance matrix.
+
+    .. math:: (Q_1 \otimes \dots \otimes Q_n) \, C \, (Q_1 \otimes \dots \otimes Q_n)^\top
+
+    where :math:`Q_i` are orthonormal matrices for each dimension and :math:`\otimes` denotes the Kronecker product.
+
+    Wikipedia:
+        https://wikipedia.org/wiki/Kronecker_product
+    """
 
     C: Covariance
     Qs: Sequence[Tensor]
@@ -242,7 +311,7 @@ class PreconditionedCovariance(Covariance):
 
     @classmethod
     @torch.no_grad()
-    def from_data(self, X: Tensor, rank: int = 0) -> PreconditionedCovariance:
+    def from_data(self, X: Tensor, rank: int = 0) -> KroneckerCovariance:
         Qs = []
 
         for i in range(1, X.ndim):
@@ -258,23 +327,23 @@ class PreconditionedCovariance(Covariance):
         else:
             C = DiagonalCovariance.from_data(X)
 
-        return PreconditionedCovariance(C, Qs)
+        return KroneckerCovariance(C, Qs)
 
-    def __add__(self, other: Covariance) -> PreconditionedCovariance:
+    def __add__(self, other: Covariance) -> KroneckerCovariance:
         if isinstance(other, IsotropicCovariance):
-            return PreconditionedCovariance(self.C + other, self.Qs)
-        elif isinstance(other, PreconditionedCovariance):
+            return KroneckerCovariance(self.C + other, self.Qs)
+        elif isinstance(other, KroneckerCovariance):
             assert all(Q1 is Q2 for Q1, Q2 in zip(self.Qs, other.Qs))
-            return PreconditionedCovariance(
+            return KroneckerCovariance(
                 self.C + other.C,
                 self.Qs,
             )
         else:
             return NotImplemented
 
-    def __mul__(self, other: Covariance) -> PreconditionedCovariance:
+    def __mul__(self, other: Covariance) -> KroneckerCovariance:
         if isinstance(other, IsotropicCovariance):
-            return PreconditionedCovariance(self.C * other, self.Qs)
+            return KroneckerCovariance(self.C * other, self.Qs)
         else:
             return NotImplemented
 
@@ -292,5 +361,5 @@ class PreconditionedCovariance(Covariance):
         return X.reshape_as(x)
 
     @property
-    def inv(self) -> PreconditionedCovariance:
-        return PreconditionedCovariance(self.C.inv, self.Qs)
+    def inv(self) -> KroneckerCovariance:
+        return KroneckerCovariance(self.C.inv, self.Qs)
