@@ -54,6 +54,7 @@ class TDSSampler(Sampler):
 
         return super().__call__(x, carry={}, **kwargs)
 
+    @torch.no_grad()
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, carry: dict, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)
         alpha_t, sigma_t = self.denoiser.schedule(t)

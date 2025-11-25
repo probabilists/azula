@@ -44,6 +44,7 @@ class PGDMSampler(DDIMSampler):
         self.A = A
         self.A_inv = A_inv
 
+    @torch.no_grad()
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         # DDIM
         alpha_s, sigma_s = self.denoiser.schedule(s)

@@ -63,6 +63,7 @@ class DiffPIRDenoiser(Denoiser):
     def schedule(self) -> Schedule:
         return self.denoiser.schedule
 
+    @torch.no_grad()
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         alpha_t, sigma_t = self.schedule(t)
         rho_t = (sigma_t / alpha_t) ** 2
