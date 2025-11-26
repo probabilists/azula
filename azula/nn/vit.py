@@ -170,7 +170,7 @@ class ViT(nn.Module):
     ):
         super().__init__()
 
-        kwargs.setdefault("rpb", True)
+        kwargs.setdefault("rope", True)
 
         if isinstance(patch_size, int):
             patch_size = [patch_size] * spatial
