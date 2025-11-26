@@ -6,12 +6,18 @@ import torch.nn as nn
 
 from torch import Tensor
 from torch.distributions import Normal
-from typing import Any, Sequence
+from typing import Any, Sequence, Tuple
 
-from azula.denoise import GaussianDenoiser, GaussianPosterior, KarrasDenoiser, Posterior
+from azula.denoise import (
+    GaussianDenoiser,
+    GaussianPosterior,
+    KarrasDenoiser,
+    Posterior,
+    SimpleDenoiser,
+)
 from azula.linalg.covariance import DPLRCovariance, KroneckerCovariance
 from azula.nn.embedding import SineEncoding
-from azula.noise import VPSchedule
+from azula.noise import RectifiedSchedule, Schedule, VPSchedule
 
 
 class Dummy(nn.Module):
@@ -84,26 +90,58 @@ def test_GaussianDenoiser(cov: str, batch: Sequence[int], channels: int):
     assert q.mean.shape == x.shape
 
 
+class ReSchedule(Schedule):
+    def __init__(self, schedule: Schedule):
+        self.schedule = schedule
+
+    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+        alpha, sigma = self.schedule(t)
+        return torch.ones_like(alpha), sigma / alpha
+
+
+@pytest.mark.parametrize("denoiser_cls", [SimpleDenoiser, KarrasDenoiser])
+@pytest.mark.parametrize("schedule_cls", [VPSchedule, RectifiedSchedule])
 @pytest.mark.parametrize("with_label", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
 @pytest.mark.parametrize("channels", [5])
-def test_KarrasDenoiser(with_label: bool, batch: Sequence[int], channels: int):
-    denoiser = KarrasDenoiser(
+def test_denoisers(
+    denoiser_cls: type,
+    schedule_cls: type,
+    with_label: bool,
+    batch: Sequence[int],
+    channels: int,
+):
+    denoiser = denoiser_cls(
         backbone=Dummy(channels, with_label),
-        schedule=VPSchedule(),
+        schedule=schedule_cls(),
     )
 
     # Forward
     x = torch.randn(*batch, channels)
     t = torch.rand(batch)
 
+    alpha_t, sigma_t = denoiser.schedule(t)
+    alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
+
+    x_t = torch.normal(alpha_t * x, sigma_t)
+
     if with_label:
-        q = denoiser(x, t, label="cat")
+        q = denoiser(x_t, t, label="cat")
     else:
-        q = denoiser(x, t)
+        q = denoiser(x_t, t)
 
     assert isinstance(q, Posterior)
     assert q.mean.shape == x.shape
+
+    ## Reschedule to VE
+    denoiser.schedule = ReSchedule(denoiser.schedule)
+
+    if with_label:
+        q_ve = denoiser(x_t / alpha_t, t, label="cat")
+    else:
+        q_ve = denoiser(x_t / alpha_t, t)
+
+    assert torch.allclose(q.mean, q_ve.mean, atol=1e-6)
 
     # Loss
     if with_label:
