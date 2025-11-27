@@ -23,7 +23,7 @@ from typing import Optional, Sequence, Union
 
 from .attention import MultiheadSelfAttention
 from .embedding import SineEncoding
-from .layers import Patchify, ReLU2, SwiGLU, Unpatchify
+from .layers import Patchify, ReLU2, RMSNorm, SwiGLU, Unpatchify
 from .utils import checkpoint
 
 
@@ -37,7 +37,7 @@ class ViTBlock(nn.Module):
         ffn_activation: The activation function in the FFN. Options are `relu`, `relu2`,
             `silu` and `swiglu`.
         dropout: The dropout rate in :math:`[0, 1]`.
-        checkpointing: Whether to use gradient checkpointing or not.
+        checkpointing: Whether to use activation checkpointing or not.
         kwargs: Keyword arguments passed to :class:`azula.nn.attention.MultiheadSelfAttention`.
     """
 
@@ -55,8 +55,11 @@ class ViTBlock(nn.Module):
 
         self.checkpointing = checkpointing
 
-        # Ada-LN Zero
-        self.norm = nn.LayerNorm(channels, elementwise_affine=False)
+        # Ada-Norm Zero
+        if hasattr(nn, "RMSNorm"):
+            self.norm = nn.RMSNorm(channels, elementwise_affine=False, eps=1e-5)
+        else:
+            self.norm = RMSNorm(dim=-1, eps=1e-5)
 
         if mod_features > 0:
             self.ada_zero = nn.Sequential(
@@ -111,7 +114,7 @@ class ViTBlock(nn.Module):
         y = (a + 1) * self.norm(x) + b
         y = y + self.msa(y, pos, mask)
         y = self.ffn(y)
-        y = (x + c * y) * torch.rsqrt(1 + c * c)
+        y = x + c * y
 
         return y
 
@@ -199,8 +202,8 @@ class ViT(nn.Module):
         self.blocks = nn.ModuleList([
             ViTBlock(
                 channels=hid_channels,
+                pos_channels=spatial,
                 mod_features=mod_features,
-                pos_features=spatial,
                 **kwargs,
             )
             for _ in range(hid_blocks)

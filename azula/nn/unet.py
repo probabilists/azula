@@ -8,13 +8,11 @@ __all__ = [
 import torch
 import torch.nn as nn
 
-from einops import rearrange
 from einops.layers.torch import Rearrange
 from torch import Tensor
-from typing import Dict, Optional, Sequence, Union
+from typing import Optional, Sequence, Union
 
-from .attention import MultiheadSelfAttention
-from .layers import ConvNd, LayerNorm
+from .layers import ConvNd, LayerNorm, RMSNorm
 from .utils import checkpoint
 
 
@@ -24,13 +22,12 @@ class UNetBlock(nn.Module):
     Arguments:
         channels: The number of channels :math:`C`.
         mod_features: The number of modulating features :math:`D`.
-        norm: The kind of normalization.
+        norm: The kind of normalization. Options are `group`, `layer` and `rms`.
         groups: The number of groups in :class:`torch.nn.GroupNorm` layers.
-        attention_heads: The number of attention heads.
         ffn_factor: The channel factor in the FFN.
         spatial: The number of spatial dimensions :math:`N`.
         dropout: The dropout rate in :math:`[0, 1]`.
-        checkpointing: Whether to use gradient checkpointing or not.
+        checkpointing: Whether to use activation checkpointing or not.
         kwargs: Keyword arguments passed to :class:`azula.nn.layers.ConvNd`.
     """
 
@@ -40,7 +37,6 @@ class UNetBlock(nn.Module):
         mod_features: int = 0,
         norm: str = "layer",
         groups: int = 16,
-        attention_heads: Optional[int] = None,
         ffn_factor: int = 1,
         spatial: int = 2,
         dropout: Optional[float] = None,
@@ -51,20 +47,17 @@ class UNetBlock(nn.Module):
 
         self.checkpointing = checkpointing
 
-        # Attention
-        if attention_heads is None:
-            self.attn = None
-        else:
-            self.attn = SelfAttentionNd(channels, attention_heads=attention_heads)
-
         # Ada-Norm Zero
         if norm == "layer":
-            self.norm = LayerNorm(dim=-spatial - 1)
+            self.norm = LayerNorm(dim=-spatial - 1, eps=1e-5)
+        elif norm == "rms":
+            self.norm = RMSNorm(dim=-spatial - 1, eps=1e-5)
         elif norm == "group":
             self.norm = nn.GroupNorm(
                 num_groups=min(groups, channels),
                 num_channels=channels,
                 affine=False,
+                eps=1e-5,
             )
         else:
             raise NotImplementedError()
@@ -97,9 +90,8 @@ class UNetBlock(nn.Module):
             a, b, c = self.ada_zero(mod)
 
         y = (a + 1) * self.norm(x) + b
-        y = y if self.attn is None else y + self.attn(y)
         y = self.ffn(y)
-        y = (x + c * y) * torch.rsqrt(1 + c * c)
+        y = x + c * y
 
         return y
 
@@ -134,7 +126,6 @@ class UNet(nn.Module):
         hid_blocks: The numbers of hidden blocks at each depth.
         kernel_size: The kernel size of all convolutions.
         stride: The stride of the downsampling convolutions.
-        attention_heads: The number of attention heads at each depth.
         spatial: The number of spatial dimensions :math:`N`.
         periodic: Whether the spatial dimensions are periodic or not.
         identity_init: Initialize down/upsampling convolutions as identity.
@@ -150,7 +141,6 @@ class UNet(nn.Module):
         hid_blocks: Sequence[int] = (3, 3, 3),
         kernel_size: Union[int, Sequence[int]] = 3,
         stride: Union[int, Sequence[int]] = 2,
-        attention_heads: Dict[int, int] = {},  # noqa: B006
         spatial: int = 2,
         periodic: bool = False,
         identity_init: bool = False,
@@ -179,23 +169,8 @@ class UNet(nn.Module):
             do, up = nn.ModuleList(), nn.ModuleList()
 
             for _ in range(num_blocks):
-                do.append(
-                    UNetBlock(
-                        hid_channels[i],
-                        attention_heads=attention_heads.get(i, None),
-                        **conv_kwargs,
-                        **kwargs,
-                    )
-                )
-
-                up.append(
-                    UNetBlock(
-                        hid_channels[i],
-                        attention_heads=attention_heads.get(i, None),
-                        **conv_kwargs,
-                        **kwargs,
-                    )
-                )
+                do.append(UNetBlock(hid_channels[i], **conv_kwargs, **kwargs))
+                up.append(UNetBlock(hid_channels[i], **conv_kwargs, **kwargs))
 
             if i > 0:
                 do.insert(
@@ -283,22 +258,3 @@ class UNet(nn.Module):
             x = torch.cat((y, x), dim=1)
 
         return x
-
-
-class SelfAttentionNd(MultiheadSelfAttention):
-    r"""Creates an N-dimensional self-attention layer."""
-
-    def forward(self, x: Tensor) -> Tensor:
-        r"""
-        Arguments:
-            x: The input tensor :math:`x`, with shape :math:`(B, C, L_1, ..., L_N)`.
-
-        Returns:
-            The ouput tensor :math:`y`, with shape :math:`(B, C, L_1, ..., L_N)`.
-        """
-
-        y = rearrange(x, "B C ...  -> B (...) C")
-        y = super().forward(y)
-        y = rearrange(y, "B L C -> B C L").reshape(x.shape)
-
-        return y

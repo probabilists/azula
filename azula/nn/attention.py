@@ -4,6 +4,7 @@ __all__ = [
     "MultiheadSelfAttention",
 ]
 
+import math
 import torch
 import torch.nn as nn
 
@@ -21,24 +22,24 @@ class MultiheadSelfAttention(nn.Module):
 
     Arguments:
         channels: The number of channels :math:`H \times C`.
+        pos_channels: The number of positional channels :math:`P`.
+            Only necessary with RoPE.
         attention_heads: The number of attention heads :math:`H`.
+        qkv_bias: Whether to add bias to the query-key-value projection layer or not.
         qk_norm: Whether to use query-key RMS-normalization or not.
-        rpb: Whether to use relative positional bias (RPB) or not.
         rope: Whether to use rotary positional embedding (RoPE) or not.
-        pos_features: The number of positional features :math:`P`.
-            Only necessary with RPB and RoPE.
         dropout: The dropout rate in :math:`[0, 1]`.
-        checkpointing: Whether to use gradient checkpointing or not.
+        checkpointing: Whether to use activation checkpointing or not.
     """
 
     def __init__(
         self,
         channels: int,
+        pos_channels: int = 1,
         attention_heads: int = 1,
+        qkv_bias: bool = True,
         qk_norm: bool = True,
-        rpb: bool = False,
         rope: bool = False,
-        pos_features: Optional[int] = None,
         dropout: Optional[float] = None,
         checkpointing: bool = False,
     ):
@@ -46,7 +47,7 @@ class MultiheadSelfAttention(nn.Module):
 
         assert channels % attention_heads == 0
 
-        self.qkv_proj = nn.Linear(channels, 3 * channels)
+        self.qkv_proj = nn.Linear(channels, 3 * channels, bias=qkv_bias)
         self.y_proj = nn.Linear(channels, channels, bias=False)
 
         if qk_norm:
@@ -61,16 +62,13 @@ class MultiheadSelfAttention(nn.Module):
         else:
             self.qk_norm = nn.Identity()
 
-        if rpb:
-            self.bias_proj = nn.Linear(pos_features, pos_features * attention_heads)
-            self.bias_proj.weight.data.mul_(1e-1)
-            self.bias_proj.bias.data.fill_(0.0)
-        else:
-            self.bias_proj = None
-
         if rope:
-            self.theta_proj = nn.Linear(pos_features, channels // 2, bias=False)
-            self.theta_proj.weight.data.mul_(1e-1)
+            magnitude = torch.exp(math.log(1e-1) * torch.rand(channels // 2, 1))
+            direction = torch.randn(channels // 2, pos_channels)
+            direction = direction / torch.linalg.norm(direction, dim=-1, keepdim=True)
+
+            self.theta_proj = nn.Linear(pos_channels, channels // 2, bias=False)
+            self.theta_proj.weight.data.copy_(magnitude * direction)
         else:
             self.theta_proj = None
 
@@ -88,20 +86,6 @@ class MultiheadSelfAttention(nn.Module):
         q, k, v = rearrange(qkv, "... L (n H C) -> n ... H L C", n=3, H=self.heads)
         q, k = self.qk_norm(q), self.qk_norm(k)
 
-        if self.bias_proj is not None:
-            p = torch.nn.functional.linear(pos, self.bias_proj.weight)
-            p = rearrange(p, "... L (H P) -> ... H L P", H=self.heads)
-
-            bias = -distance_matrix(
-                x=p,
-                y=p + self.bias_proj.bias.reshape(self.heads, 1, -1),
-            )
-
-            if mask is not None:
-                bias = torch.where(mask, bias, float("-inf"))
-        else:
-            bias = mask
-
         if self.theta_proj is not None:
             theta = self.theta_proj(pos)
             theta = rearrange(theta, "... L (H C) -> ... H L C", H=self.heads)
@@ -111,7 +95,7 @@ class MultiheadSelfAttention(nn.Module):
             query=q,
             key=k,
             value=v,
-            attn_mask=bias,
+            attn_mask=mask,
             dropout_p=self.dropout if self.training else 0.0,
         )
 
@@ -140,26 +124,6 @@ class MultiheadSelfAttention(nn.Module):
             return checkpoint(self._forward, reentrant=not self.training)(x, theta, mask)
         else:
             return self._forward(x, theta, mask)
-
-
-def distance_matrix(x: Tensor, y: Tensor) -> Tensor:
-    r"""
-    .. math:: d_ij = ||x_i - y_j||_2^2
-
-    Arguments:
-        x: A list of points :math:`x_i`, with shape :math:`(*, M, P)`.
-        y: A list of points :math:`y_j`, with shape :math:`(*, N, P)`.
-
-    Returns:
-        The distance matrix :math:`d_ij`, with shape :math:`(*, M, N)`.
-    """
-
-    x2 = x[..., :, None, :].square().sum(dim=-1)
-    y2 = y[..., None, :, :].square().sum(dim=-1)
-
-    xy = torch.einsum("...ik,...jk->...ij", x, y)
-
-    return x2 + y2 - 2 * xy
 
 
 @promote_dtype
