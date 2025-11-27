@@ -6,6 +6,7 @@ Note:
     encoding is a static function.
 """
 
+import math
 import torch
 import torch.nn as nn
 
@@ -55,7 +56,7 @@ def sine_encoding(x: Tensor, /, features: int, omega: float = 1e4) -> Tensor:
     x = x.unsqueeze(dim=-1)
 
     freqs = torch.linspace(0, 1, features // 2, dtype=x.dtype, device=x.device)
-    freqs = omega ** (-freqs)
+    freqs = torch.exp(math.log(1 / omega) * freqs)
 
     return torch.cat(
         (
