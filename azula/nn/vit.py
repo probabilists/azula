@@ -23,7 +23,7 @@ from typing import Optional, Sequence, Union
 
 from .attention import MultiheadSelfAttention
 from .embedding import SineEncoding
-from .layers import Patchify, Unpatchify
+from .layers import Patchify, ReLU2, SwiGLU, Unpatchify
 from .utils import checkpoint
 
 
@@ -34,8 +34,8 @@ class ViTBlock(nn.Module):
         channels: The number of channels :math:`C`.
         mod_features: The number of modulating features :math:`D`.
         ffn_factor: The channel factor in the FFN.
-        spatial: The number of spatial dimensinons :math:`N`. Only necessary with RoPE.
-        rope: Whether to use rotary positional embedding (RoPE) or not.
+        ffn_activation: The activation function in the FFN. Options are `relu`, `relu2`,
+            `silu` and `swiglu`.
         dropout: The dropout rate in :math:`[0, 1]`.
         checkpointing: Whether to use gradient checkpointing or not.
         kwargs: Keyword arguments passed to :class:`azula.nn.attention.MultiheadSelfAttention`.
@@ -46,8 +46,7 @@ class ViTBlock(nn.Module):
         channels: int,
         mod_features: int = 0,
         ffn_factor: int = 4,
-        spatial: int = 2,
-        rope: bool = True,
+        ffn_activation: str = "silu",
         dropout: Optional[float] = None,
         checkpointing: bool = False,
         **kwargs,
@@ -75,21 +74,26 @@ class ViTBlock(nn.Module):
         # MSA
         self.msa = MultiheadSelfAttention(channels, **kwargs)
 
-        ## RoPE
-        if rope:
-            magnitude = 1e1 ** -torch.rand(channels // 2)
-            direction = torch.nn.functional.normalize(torch.randn(spatial, channels // 2), dim=0)
-
-            self.theta = nn.Parameter(magnitude * direction)
-        else:
-            self.theta = None
-
         # FFN
+        activation_factor = 1
+
+        if ffn_activation == "relu":
+            activation = nn.ReLU()
+        elif ffn_activation == "relu2":
+            activation = ReLU2()
+        elif ffn_activation == "silu":
+            activation = nn.SiLU()
+        elif ffn_activation == "swiglu":
+            activation = SwiGLU()
+            activation_factor = 2
+        else:
+            raise ValueError(f"Unknown activation '{ffn_activation}'.")
+
         self.ffn = nn.Sequential(
             nn.Linear(channels, ffn_factor * channels),
-            nn.SiLU(),
+            activation,
             nn.Identity() if dropout is None else nn.Dropout(dropout),
-            nn.Linear(ffn_factor * channels, channels),
+            nn.Linear(ffn_factor * channels // activation_factor, channels),
         )
 
     def _forward(
@@ -99,18 +103,13 @@ class ViTBlock(nn.Module):
         pos: Optional[Tensor] = None,
         mask: Optional[Tensor] = None,
     ) -> Tensor:
-        if self.theta is None:
-            theta = None
-        else:
-            theta = torch.einsum("...ij,jk", pos, self.theta)
-
         if torch.is_tensor(self.ada_zero):
             a, b, c = self.ada_zero
         else:
             a, b, c = self.ada_zero(mod)
 
         y = (a + 1) * self.norm(x) + b
-        y = y + self.msa(y, theta, mask)
+        y = y + self.msa(y, pos, mask)
         y = self.ffn(y)
         y = (x + c * y) * torch.rsqrt(1 + c * c)
 
@@ -171,6 +170,8 @@ class ViT(nn.Module):
     ):
         super().__init__()
 
+        kwargs.setdefault("rope", True)
+
         if isinstance(patch_size, int):
             patch_size = [patch_size] * spatial
 
@@ -188,18 +189,18 @@ class ViT(nn.Module):
         self.in_proj = nn.Linear(math.prod(patch_size) * (in_channels + cond_channels), hid_channels)  # fmt: off
         self.out_proj = nn.Linear(hid_channels, math.prod(patch_size) * out_channels)
 
-        self.positional_embedding = nn.Sequential(
-            SineEncoding(hid_channels, omega=1e3),
+        self.pos_embedding = nn.Sequential(
+            SineEncoding(hid_channels, omega=1e2),
             Rearrange("... N C -> ... (N C)"),
             nn.Linear(spatial * hid_channels, hid_channels, bias=False),
         )
-        self.positional_embedding[-1].weight.data.mul_(1e-2)
+        self.pos_embedding[-1].weight.data.mul_(1e-2)
 
         self.blocks = nn.ModuleList([
             ViTBlock(
                 channels=hid_channels,
                 mod_features=mod_features,
-                spatial=spatial,
+                pos_features=spatial,
                 **kwargs,
             )
             for _ in range(hid_blocks)
@@ -234,7 +235,7 @@ class ViT(nn.Module):
         pos = torch.reshape(pos, shape=(-1, len(shape)))
 
         x = torch.flatten(x, 1, -2)
-        x = x + self.positional_embedding(pos)
+        x = x + self.pos_embedding(pos)
 
         for block in self.blocks:
             x = block(x, mod, pos=pos)

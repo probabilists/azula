@@ -29,8 +29,11 @@ __all__ = [
     "DDIMSampler",
     "EulerSampler",
     "HeunSampler",
-    "ABSampler",
-    "EABSampler",
+    "zABSampler",
+    "vABSampler",
+    "zEABSampler",
+    "xEABSampler",
+    "REABSampler",
     "PCSampler",
 ]
 
@@ -38,11 +41,13 @@ import abc
 import math
 import torch
 
+from functools import partial
 from torch import Tensor
 from tqdm import tqdm
 from typing import Iterable, Optional, Sequence, Union
 
 from .denoise import Denoiser
+from .nn.utils import promote_dtype
 
 
 class Sampler(abc.ABC):
@@ -52,7 +57,7 @@ class Sampler(abc.ABC):
         start: The starting time :math:`t_T`.
         stop: The stopping time :math:`t_0`.
         steps: The number of discretization steps :math:`T`. By default, the step size
-            :math:`t_{i} - t_{i-1}` is constant.
+            :math:`t_i - t_{i-1}` is constant.
         silent: Whether to hide the sampling progress bar or not.
         dtype: The time data type.
         device: The time device.
@@ -155,7 +160,7 @@ class Sampler(abc.ABC):
         return x
 
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
-        r"""Simulates the reverse process from :math:`t` to :math:`s < t`.
+        r"""Simulates the reverse process from :math:`t` to :math:`s`.
 
         Arguments:
             x_t: The current tensor :math:`x_t`, with shape :math:`(*)`.
@@ -263,10 +268,15 @@ class EulerSampler(Sampler):
     Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
     t` such that
 
-    .. math:: x_s = x_t + \int_t^s z(x_u) \, du
+    .. math:: \frac{d x_t}{dt}
+        & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
+        & = \mathbb{E}[Z \mid x_t] = z(x_t)
 
-    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{t}`. The explicit Euler
-    step for this integral is
+    and
+
+    .. math:: x_s = x_t + \int_t^s z(x_u) \, du \, .
+
+    The explicit Euler step for this integral is
 
     .. math:: x_s \gets x_t + (s - t) \, z(x_t)
 
@@ -300,10 +310,15 @@ class HeunSampler(Sampler):
     Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
     t` such that
 
-    .. math:: x_s = x_t + \int_t^s z(x_u) \, du
+    .. math:: \frac{d x_t}{dt}
+        & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
+        & = \mathbb{E}[Z \mid x_t] = z(x_t)
 
-    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{t}`. The explicit Heun
-    step for this integral is
+    and
+
+    .. math:: x_s = x_t + \int_t^s z(x_u) \, du \, .
+
+    The explicit Heun step for this integral is
 
     .. math::
         x_s & \gets x_t + (s - t) \, z(x_t) \\
@@ -338,8 +353,8 @@ class HeunSampler(Sampler):
         return x_s
 
 
-class ABSampler(Sampler):
-    r"""Creates an Adams-Bashforth (AB) multi-step sampler.
+class zABSampler(Sampler):
+    r"""Creates an Adams-Bashforth (AB) multi-step sampler with noise (:math:`z`) prediction.
 
     Note:
         This sampler is equivalent to the :math:`\rho\mathrm{AB}` sampler from Zhang et al.
@@ -349,23 +364,26 @@ class ABSampler(Sampler):
     Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
     t` such that
 
-    .. math:: x_s = x_t + \int_t^s z(x_u) \, du
+    .. math:: \frac{d x_t}{dt}
+        & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
+        & = \mathbb{E}[Z \mid x_t] = z(x_t)
 
-    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{t}`. The :math:`n`-th
-    order Adams-Bashforth step for this integral is
+    and
 
-    .. math:: x_s \gets x_t + \sum_{i=0}^{n-1} z(x_{t_i}) \int_t^s \ell_i(u) \, du
+    .. math:: x_s = x_t + \int_t^s z(x_u) \, du \, .
 
-    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(t)` form
-    their Lagrange basis.
+    The :math:`n`-th order Adams-Bashforth step for this integral is
 
-    .. math:: \ell_i(t_j) = \sum_{k=0}^{n-1} a_{ik} \, t_j^k = \delta_{ij}
+    .. math:: x_s \gets x_t + \sum_{i=1}^{n} z(x_{t_i}) \int_t^s \ell_i(u) \, du
 
-    Therefore, the Adams-Bashforth coefficients are
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
+    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    :math:`a_{ik}` are determined by solving the system of linear equations
+    :math:`\ell_i(t_j) = \delta_{ij}`. Then, the Adams-Bashforth coefficients are
 
     .. math:: \int_t^s \ell_i(u) \, du
-        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s u^k \, du \\
-        & = \sum_{k=0}^{n-1} a_{ik} \left[ \frac{u^{k+1}}{k+1} \right]_t^s
+        & = \sum_{k=1}^{n} a_{ik} \int_t^s u^k \, du \\
+        & = \sum_{k=1}^{n} a_{ik} \left[ \frac{u^{k+1}}{k+1} \right]_t^s
 
     Wikipedia:
         https://wikipedia.org/wiki/Linear_multistep_method
@@ -380,41 +398,42 @@ class ABSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, order: int = 3, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
         self.order = order
 
     @staticmethod
-    def adams_bashforth(t: Tensor, n: int = 3) -> Tensor:
+    @partial(promote_dtype, min_dtype=torch.float64)
+    def _adams_bashforth(t: Tensor, /, i: int, n: int) -> Tensor:
         r"""Returns the coefficients of the :math:`n`-th order Adams-Bashforth method.
 
         Arguments:
-            t: The integration variable, with shape :math:`(m + 1)`.
-            n: The method order :math:`n \leq m`.
+            t: The integration variable, with shape :math:`(T)`.
+            i: The current step :math:`i`.
+            n: The method order :math:`n \leq i + 1`.
 
         Returns:
             The coefficients, with shape :math:`(n)`.
         """
 
-        m = len(t) - 1
-        n = min(n, m)
-        k = torch.arange(n, dtype=torch.float64, device=t.device)
+        n = min(n, i + 1)
+        k = torch.arange(n, device=t.device)
 
         # Vandermonde matrix t_i^k
-        V = t[m - n : m] ** k[:, None]
+        V = t[i + 1 - n : i + 1] ** k[:, None]
 
-        # Integral of u^k from t_{m-1} to t_m
-        b = t[m] ** (k + 1) / (k + 1) - t[m - 1] ** (k + 1) / (k + 1)
+        # Integral of u^k from t_i to t_{i+1}
+        b = t[i + 1] ** (k + 1) / (k + 1) - t[i] ** (k + 1) / (k + 1)
 
-        return torch.linalg.solve(V, b).to(dtype=t.dtype)
+        return torch.linalg.solve(V, b)
 
     @torch.no_grad()
     def __call__(self, x: Tensor, **kwargs) -> Tensor:
         time = self.timesteps.to(device=x.device)
         alpha, sigma = self.denoiser.schedule(time)
-        rho = sigma / alpha
+        u = sigma / alpha
 
         x_t = x
 
@@ -431,7 +450,7 @@ class ABSampler(Sampler):
             if len(buffer) > self.order:
                 buffer.pop(0)
 
-            coeffs = self.adams_bashforth(rho[: i + 2], n=self.order)
+            coeffs = self._adams_bashforth(u, i=i, n=self.order)
             integral = sum(b * c for b, c in zip(buffer, coeffs))
 
             x_s = alpha_s / alpha_t * x_t + alpha_s * integral
@@ -442,40 +461,28 @@ class ABSampler(Sampler):
         return x
 
 
-class EABSampler(Sampler):
-    r"""Creates an exponential Adams-Bashforth (EAB) multi-step sampler.
+class vABSampler(zABSampler):
+    r"""Creates an Adams-Bashforth (AB) multi-step sampler with velocity (:math:`v`) prediction.
 
-    Note:
-        This sampler is a multi-step generalization of the DPM-Solver sampler from Cheng
-        Lu's `dpm-solver <https://github.com/LuChengTHU/dpm-solver>`_.
+    Without loss of generality, let's assume :math:`\alpha_t = 1 - t` and
+    :math:`\sigma_t = t` such that
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
-    e^t` such that
+    .. math:: \frac{d x_t}{dt}
+        & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
+        & = -\mathbb{E}[X \mid x_t] + \mathbb{E}[Z \mid x_t] = v(x_t)
 
-    .. math:: x_s = x_t + \int_t^s e^u \, z(x_u) \, du
+    and
 
-    where :math:`z(x_t) = \frac{x_t - \mathbb{E}[X \mid x_t]}{e^t}`. The :math:`n`-th
-    order exponential Adams-Bashforth step for this integral is
+    .. math:: x_s = x_t + \int_t^s v(x_u) \, du \, .
 
-    .. math:: x_s \gets x_t + \sum_{i=0}^{n-1} z(x_{t_i}) \int_t^s e^u \, \ell_i(u) \, du
+    The :math:`n`-th order Adams-Bashforth step for this integral is
 
-    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(t)` form
-    their Lagrange basis.
+    .. math:: x_s \gets x_t + \sum_{i=1}^{n} v(x_{t_i}) \int_t^s \ell_i(u) \, du
 
-    .. math:: \ell_i(t_j) = \sum_{k=0}^{n-1} a_{ik} \, t_j^k = \delta_{ij}
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u)` form their Lagrange basis.
 
-    Therefore, the exponential Adams-Bashforth coefficients are
-
-    .. math:: \int_t^s e^u \, \ell_i(u) \, du
-        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s e^u \, u^k \, du \\
-        & = \sum_{k=0}^{n-1} a_{ik} \left[ (-1)^k \, k! \, e^u \sum_{j=0}^k \frac{(-u)^j}{j!} \right]_t^s
-
-    References:
-        | Exponential Adams Bashforth ODE solver for stiff problems (Coudière et al., 2018)
-        | https://arxiv.org/abs/1804.09927
-
-        | DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps (Lu et al., 2022)
-        | https://arxiv.org/abs/2206.00927
+    See also:
+        :class:`zABSampler`
 
     Arguments:
         denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
@@ -483,49 +490,127 @@ class EABSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, order: int = 3, **kwargs):
+    @torch.no_grad()
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
+        time = self.timesteps.to(device=x.device)
+        alpha, sigma = self.denoiser.schedule(time)
+        u = sigma / (alpha + sigma)
+
+        x_t = x
+
+        buffer = []
+
+        for i, t in enumerate(self.progress_bar(time[:-1])):
+            alpha_t, sigma_t = alpha[i], sigma[i]
+            alpha_s, sigma_s = alpha[i + 1], sigma[i + 1]
+
+            q_t = self.denoiser(x_t, t, **kwargs)
+            v_t = 1 / sigma_t * x_t - (1 + alpha_t / sigma_t) * q_t.mean
+
+            buffer.append(v_t)
+            if len(buffer) > self.order:
+                buffer.pop(0)
+
+            coeffs = self._adams_bashforth(u, i=i, n=self.order)
+            integral = sum(b * c for b, c in zip(buffer, coeffs))
+
+            x_s = (alpha_s + sigma_s) / (alpha_t + sigma_t) * x_t + (alpha_s + sigma_s) * integral
+            x_t = x_s
+
+        x = x_t
+
+        return x
+
+
+class zEABSampler(Sampler):
+    r"""Creates an exponential Adams-Bashforth (EAB) multi-step sampler with noise (:math:`z`) prediction.
+
+    Note:
+        This sampler is a multi-step generalization of the DPM-Solver sampler from Lu et
+        al. (2022).
+
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    e^t` such that
+
+    .. math:: \frac{d x_t}{dt}
+        & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
+        & = e^t \, \mathbb{E}[Z \mid x_t] = e^t \, z(x_t)
+
+    and
+
+    .. math:: x_s = x_t + \int_t^s e^u \, z(x_u) \, du \, .
+
+    The :math:`n`-th order exponential Adams-Bashforth step for this integral is
+
+    .. math:: x_s \gets x_t + \sum_{i=1}^{n} z(x_{t_i}) \int_t^s e^u \, \ell_i(u) \, du
+
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
+    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    :math:`a_{ik}` are determined by solving the system of linear equations
+    :math:`\ell_i(t_j) = \delta_{ij}`. Then, the exponential Adams-Bashforth
+    coefficients are
+
+    .. math:: \int_t^s e^u \, \ell_i(u) \, du
+        & = \sum_{k=1}^{n} a_{ik} \int_t^s e^u \, u^k \, du \\
+        & = \sum_{k=1}^{n} a_{ik} \left[ (-1)^k \, k! \, e^u \sum_{j=0}^k \frac{(-u)^j}{j!} \right]_t^s
+
+    References:
+        | DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps (Lu et al., 2022)
+        | https://arxiv.org/abs/2206.00927
+
+        | Exponential Adams Bashforth ODE solver for stiff problems (Coudière et al., 2018)
+        | https://arxiv.org/abs/1804.09927
+
+    Arguments:
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
+        order: The order :math:`n` of the multi-step method.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
         self.order = order
 
     @staticmethod
-    def exponential_adams_bashforth(t: Tensor, n: int = 3) -> Tensor:
+    @partial(promote_dtype, min_dtype=torch.float64)
+    def _exponential_adams_bashforth(t: Tensor, /, i: int, n: int) -> Tensor:
         r"""Returns the coefficients of the :math:`n`-th order exponential Adams-Bashforth method.
 
         Arguments:
-            t: The integration variable, with shape :math:`(m + 1)`.
-            n: The method order :math:`n \leq m`.
+            t: The integration variable, with shape :math:`(T)`.
+            i: The current step :math:`i`.
+            n: The method order :math:`n \leq i + 1`.
 
         Returns:
             The coefficients, with shape :math:`(n)`.
         """
 
-        m = len(t) - 1
-        n = min(n, m)
-        k = torch.arange(n, dtype=torch.float64, device=t.device)
-        k_fact = torch.lgamma(k + 1).exp()
+        n = min(n, i + 1)
+        k = torch.arange(n, device=t.device)
+        k_fact = torch.cumprod(torch.clip(k, min=1), dim=0)
 
         # Vandermonde matrix t_i^k
-        V = t[m - n : m] ** k[:, None]
+        V = t[i + 1 - n : i + 1] ** k[:, None]
 
-        # Integral of exp(u) u^k from t_{m-1} to t_m
+        # Integral of exp(u) u^k from t_i to t_{i+1}
         b = (
             (-1) ** k
             * k_fact
             * (
-                torch.exp(t[m]) * torch.cumsum((-t[m]) ** k / k_fact, dim=0)
-                - torch.exp(t[m - 1]) * torch.cumsum((-t[m - 1]) ** k / k_fact, dim=0)
+                torch.exp(t[i + 1]) * torch.cumsum((-t[i + 1]) ** k / k_fact, dim=0)
+                - torch.exp(t[i]) * torch.cumsum((-t[i]) ** k / k_fact, dim=0)
             )
         )
 
-        return torch.linalg.solve(V, b).to(dtype=t.dtype)
+        return torch.linalg.solve(V, b)
 
     @torch.no_grad()
     def __call__(self, x: Tensor, **kwargs) -> Tensor:
         time = self.timesteps.to(device=x.device)
         alpha, sigma = self.denoiser.schedule(time)
-        log_rho = sigma.log() - alpha.log()
+        u = sigma.log() - alpha.log()
 
         x_t = x
 
@@ -542,10 +627,244 @@ class EABSampler(Sampler):
             if len(buffer) > self.order:
                 buffer.pop(0)
 
-            coeffs = self.exponential_adams_bashforth(log_rho[: i + 2], n=self.order)
+            coeffs = self._exponential_adams_bashforth(u, i=i, n=self.order)
             integral = sum(b * c for b, c in zip(buffer, coeffs))
 
             x_s = alpha_s / alpha_t * x_t + alpha_s * integral
+            x_t = x_s
+
+        x = x_t
+
+        return x
+
+
+class xEABSampler(Sampler):
+    r"""Creates an exponential Adams-Bashforth (EAB) multi-step sampler with data (:math:`x`) prediction.
+
+    Note:
+        This sampler is a multi-step generalization of the DPM-Solver++ sampler from Lu et al. (2022).
+
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    e^t` such that
+
+    .. math:: \frac{d x_t}{dt}
+        & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
+        & = e^t \, \mathbb{E}[Z \mid x_t] = x_t - \mathbb{E}[X \mid x_t] = x_t - x(x_t)
+
+    and
+
+    .. math:: x_s = e^{s-t} \, x_t - \int_t^s e^{s-u} \, x(x_u) \, du \, .
+
+    The :math:`n`-th order exponential Adams-Bashforth step for this integral is
+
+    .. math:: x_s \gets e^{s-t} \, x_t
+        - e^s \sum_{i=1}^{n} x(x_{t_i}) \int_t^s e^{-u} \, \ell_i(u) \, du
+
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
+    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    :math:`a_{ik}` are determined by solving the system of linear equations
+    :math:`\ell_i(t_j) = \delta_{ij}`. Then, the exponential Adams-Bashforth
+    coefficients are
+
+    .. math:: \int_t^s e^{-u} \, \ell_i(u) \, du
+        & = \sum_{k=1}^{n} a_{ik} \int_t^s e^{-u} \, u^k \, du \\
+        & = \sum_{k=1}^{n} a_{ik} \left[ -k! \, e^{-u} \sum_{j=0}^k \frac{u^j}{j!} \right]_t^s
+
+    References:
+        | DPM-Solver++: Fast Solver for Guided Sampling of Diffusion Probabilistic Models (Lu et al., 2022)
+        | https://arxiv.org/abs/2211.01095
+
+    Arguments:
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
+        order: The order :math:`n` of the multi-step method.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+        self.order = order
+
+    @staticmethod
+    @partial(promote_dtype, min_dtype=torch.float64)
+    def _exponential_adams_bashforth(t: Tensor, /, i: int, n: int) -> Tensor:
+        r"""Returns the coefficients of the :math:`n`-th order exponential Adams-Bashforth method.
+
+        Arguments:
+            t: The integration variable, with shape :math:`(T)`.
+            i: The current step :math:`i`.
+            n: The method order :math:`n \leq i + 1`.
+
+        Returns:
+            The coefficients, with shape :math:`(n)`.
+        """
+
+        n = min(n, i + 1)
+        k = torch.arange(n, device=t.device)
+        k_fact = torch.cumprod(torch.clip(k, min=1), dim=0)
+
+        # Vandermonde matrix t_i^k
+        V = t[i + 1 - n : i + 1] ** k[:, None]
+
+        # Integral of exp(-u) u^k from t_i to t_{i+1}
+        b = -k_fact * (
+            torch.exp(-t[i + 1]) * torch.cumsum(t[i + 1] ** k / k_fact, dim=0)
+            - torch.exp(-t[i]) * torch.cumsum(t[i] ** k / k_fact, dim=0)
+        )
+
+        return torch.linalg.solve(V, b)
+
+    @torch.no_grad()
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
+        time = self.timesteps.to(device=x.device)
+        alpha, sigma = self.denoiser.schedule(time)
+        u = sigma.log() - alpha.log()
+
+        x_t = x
+
+        buffer = []
+
+        for i, t in enumerate(self.progress_bar(time[:-1])):
+            sigma_t = sigma[i]
+            sigma_s = sigma[i + 1]
+
+            q_t = self.denoiser(x_t, t, **kwargs)
+
+            buffer.append(q_t.mean)
+            if len(buffer) > self.order:
+                buffer.pop(0)
+
+            coeffs = self._exponential_adams_bashforth(u, i=i, n=self.order)
+            integral = sum(b * c for b, c in zip(buffer, coeffs))
+
+            x_s = sigma_s / sigma_t * x_t - sigma_s * integral
+            x_t = x_s
+
+        x = x_t
+
+        return x
+
+
+class REABSampler(Sampler):
+    r"""Creates a Rosenbrock-type exponential Adams-Bashforth (REAB) multi-step sampler.
+
+    Note:
+        This sampler is a multi-step generalization of the DPM-Solver-v3 sampler from Zheng et al. (2023).
+
+    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
+    e^t` such that
+
+    .. math:: \frac{d x_t}{dt}
+        & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
+        & = e^t \, \mathbb{E}[Z \mid x_t] = x_t - \mathbb{E}[X \mid x_t] \\
+        & = a_t \, x_t + b_t \frac{(1 - a_t) \, x_t - \mathbb{E}[X \mid x_t]}{b_t}
+            = a_t \, x_t + b_t \, f(x_t)
+
+    and
+
+    .. math:: x_s = \Psi(t, s) \, x_t + \int_t^s \Psi(u, s) \, b_u \, f(x_u) \, du
+
+    where :math:`a_t = \frac{e^{2t}}{1 + e^{2t}}`, :math:`b_t = \sqrt{a_t}` and
+
+    .. math:: \Psi(t, s)
+        = \exp \left( \int_t^s a_u \, du \right)
+        = \sqrt{\frac{1 + e^{2s}}{1 + e^{2t}}} \, .
+
+    The :math:`n`-th order exponential Adams-Bashforth step for this integral is
+
+    .. math:: x_s \gets \sqrt{\frac{1 + e^{2s}}{1 + e^{2t}}} \, x_t
+        + \sqrt{1 + e^{2s}} \sum_{i=1}^{n} f(x_{t_i}) \int_t^s \frac{e^u}{1 + e^{2u}} \ell_i(u) \, du
+
+    where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
+    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    :math:`a_{ik}` are determined by solving the system of linear equations
+    :math:`\ell_i(t_j) = \delta_{ij}`. Then, the exponential Adams-Bashforth
+    coefficients are
+
+    .. math:: \int_t^s \frac{e^u}{1 + e^{2u}} \ell_i(u) \, du
+        = \sum_{k=1}^{n} a_{ik} \int_t^s \frac{e^u \, u^k}{1 + e^{2u}} du
+
+    where the last integral is estimated by numerical integration.
+
+    References:
+        | DPM-Solver-v3: Improved Diffusion ODE Solver with Empirical Model Statistics (Zheng et al., 2023)
+        | https://arxiv.org/abs/2310.13268
+
+        | Exponential Rosenbrock-Type Methods (Hochbruck et al., 2009)
+        | https://epubs.siam.org/doi/10.1137/080717717
+
+    Arguments:
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
+        order: The order :math:`n` of the multi-step method.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+        self.order = order
+
+    @staticmethod
+    @partial(promote_dtype, min_dtype=torch.float64)
+    def _exponential_adams_bashforth(t: Tensor, /, i: int, n: int) -> Tensor:
+        r"""Returns the coefficients of the :math:`n`-th order exponential Adams-Bashforth method.
+
+        Arguments:
+            t: The integration variable, with shape :math:`(T)`.
+            i: The current step :math:`i`.
+            n: The method order :math:`n \leq i + 1`.
+
+        Returns:
+            The coefficients, with shape :math:`(n)`.
+        """
+
+        n = min(n, i + 1)
+        k = torch.arange(n, device=t.device)
+
+        # Vandermonde matrix t_i^k
+        V = t[i + 1 - n : i + 1] ** k[:, None]
+
+        # Integral of exp(u) / (1 + exp(2u)) u^k from t_i to t_{i+1}
+        u = torch.linspace(t[i], t[i + 1], steps=256 + 1, dtype=t.dtype, device=t.device)
+        y = torch.exp(u) / (1 + torch.exp(2 * u)) * (u ** k[:, None])
+        b = torch.trapezoid(y, u, dim=-1)
+
+        return torch.linalg.solve(V, b)
+
+    @torch.no_grad()
+    def __call__(self, x: Tensor, **kwargs) -> Tensor:
+        time = self.timesteps.to(device=x.device)
+        alpha, sigma = self.denoiser.schedule(time)
+        u = sigma.log() - alpha.log()
+
+        x_t = x
+
+        buffer = []
+
+        for i, t in enumerate(self.progress_bar(time[:-1])):
+            alpha_t, sigma_t = alpha[i], sigma[i]
+            alpha_s, sigma_s = alpha[i + 1], sigma[i + 1]
+
+            q_t = self.denoiser(x_t, t, **kwargs)
+
+            a_t = sigma_t**2 / (alpha_t**2 + sigma_t**2)
+            b_t = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
+
+            f_t = (1 - a_t) / b_t / alpha_t * x_t - 1 / b_t * q_t.mean
+
+            buffer.append(f_t)
+            if len(buffer) > self.order:
+                buffer.pop(0)
+
+            coeffs = self._exponential_adams_bashforth(u, i=i, n=self.order)
+            integral = sum(b * c for b, c in zip(buffer, coeffs))
+
+            x_s = (
+                torch.sqrt((alpha_s**2 + sigma_s**2) / (alpha_t**2 + sigma_t**2)) * x_t
+                + torch.sqrt(alpha_s**2 + sigma_t**2) * integral
+            )
             x_t = x_s
 
         x = x_t

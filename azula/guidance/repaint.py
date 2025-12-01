@@ -43,6 +43,7 @@ class RePaintSampler(DDIMSampler):
 
         self.iterations = iterations
 
+    @torch.no_grad()
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         alpha_s, sigma_s = self.denoiser.schedule(s)
         alpha_t, sigma_t = self.denoiser.schedule(t)

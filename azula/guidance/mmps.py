@@ -67,6 +67,7 @@ class MMPSDenoiser(Denoiser):
     def schedule(self) -> Schedule:
         return self.denoiser.schedule
 
+    @torch.no_grad()
     def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         alpha_t, sigma_t = self.schedule(t)
         gamma_t = sigma_t**2 / alpha_t

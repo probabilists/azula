@@ -43,6 +43,7 @@ class DPSSampler(DDPMSampler):
         self.A = A
         self.zeta = zeta
 
+    @torch.no_grad()
     def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
         # DDPM
         alpha_s, sigma_s = self.denoiser.schedule(s)

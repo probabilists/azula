@@ -20,7 +20,7 @@ def torch_float64():
 
 
 @pytest.mark.parametrize("rank", [3, 5])
-@pytest.mark.parametrize("batch", [()])
+@pytest.mark.parametrize("batch", [(), (64,)])
 def test_cg(rank: int, batch: Sequence[int]):
     U = torch.randn(*batch, 5, rank)
     A = partial(torch.einsum, "...ij,...j", U @ U.mT)
