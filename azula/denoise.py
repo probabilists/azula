@@ -424,6 +424,6 @@ class JiTDenoiser(Denoiser):
 
         loss = (x_pred - x) ** 2
 
-        loss = loss / ((1 - t).unsqueeze(-1) + t_eps) ** 2
+        loss = loss / ((1 - t).unsqueeze(-1) + t_eps)
         
         return loss.mean()
