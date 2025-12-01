@@ -349,7 +349,9 @@ class KarrasDenoiser(Denoiser):
 
         q = self(x_t, t, **kwargs)
 
-        return ((q.mean - x).square() / q.var.detach()).mean()
+        w_t = (alpha_t / sigma_t) ** 2 + 1
+
+        return (w_t * (q.mean - x).square()).mean()
 
 
 class JiTDenoiser(Denoiser):
@@ -386,9 +388,21 @@ class JiTDenoiser(Denoiser):
         Returns:
             DiracPosterior where mean is the predicted x.
         """
+        alpha_t, sigma_t = self.schedule(t)
+
+        while alpha_t.ndim < x_t.ndim:
+            alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
+
+        c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_time = torch.log(sigma_t / alpha_t).reshape_as(t)
+
         dtype = get_module_dtype(self.backbone)
 
-        output = self.backbone(x_t.to(dtype), t.to(dtype), **kwargs).to(x_t)
+        output = self.backbone(
+            (c_in * x_t).to(dtype),
+            c_time.to(dtype),
+            **kwargs,
+        ).to(x_t)
 
         return DiracPosterior(mean=output)
 
