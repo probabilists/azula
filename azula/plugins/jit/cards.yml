@@ -1,0 +1,37 @@
+# Pre-trained model cards
+
+jit_0.1b_16:
+  url: https://www.dropbox.com/scl/fo/3ken1avtsd81ip67b9qpi/AE2EE_zxp_OiHJKJkf3rk7s/jit-b-16?rlkey=14gjrblmljewpl6ygxzlr3njm&dl=1
+  hash: null
+  config:
+    model: JiT-B/16
+
+jit_0.1b_32:
+  url: https://www.dropbox.com/scl/fo/3ken1avtsd81ip67b9qpi/ALvwlNXI-BuMlaBtCCLguIQ/jit-b-32?rlkey=14gjrblmljewpl6ygxzlr3njm&dl=1
+  hash: null
+  config:
+    model: JiT-B/32
+
+jit_0.5b_16:
+  url: https://www.dropbox.com/scl/fo/3ken1avtsd81ip67b9qpi/AFbI1Bevlz89myAjqiZtmH0/jit-l-16?rlkey=14gjrblmljewpl6ygxzlr3njm&dl=1
+  hash: null
+  config:
+    model: JiT-L/16
+
+jit_0.5b_32:
+  url: https://www.dropbox.com/scl/fo/3ken1avtsd81ip67b9qpi/AF2TnHpJKLnLEo0tFz7S1_0/jit-l-32?rlkey=14gjrblmljewpl6ygxzlr3njm&dl=1
+  hash: null
+  config:
+    model: JiT-L/32
+
+jit_1.0b_16:
+  url: https://www.dropbox.com/scl/fo/3ken1avtsd81ip67b9qpi/ALQzc8CWONX6fVvej_kfjY0/jit-h-16?rlkey=14gjrblmljewpl6ygxzlr3njm&dl=1
+  hash: null
+  config:
+    model: JiT-H/16
+
+jit_1.0b_32:
+  url: https://www.dropbox.com/scl/fo/3ken1avtsd81ip67b9qpi/AH5eChpH2vfteS6hYqIRPAQ/jit-h-32?rlkey=14gjrblmljewpl6ygxzlr3njm&dl=1
+  hash: null
+  config:
+    model: JiT-H/32
