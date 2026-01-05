@@ -10,8 +10,12 @@ import gdown
 import hashlib
 import os
 import re
+import shutil
 import sys
+import tarfile
+import tempfile
 import torch
+import zipfile
 
 from typing import Optional
 
@@ -39,6 +43,7 @@ def download(
     url: str,
     filename: Optional[str] = None,
     hash_prefix: Optional[str] = None,
+    extract: bool = False,
     quiet: bool = False,
 ) -> str:
     r"""Downloads data at a given URL to a local file.
@@ -48,7 +53,12 @@ def download(
         filename: A local file name. If :py:`None`, use the sanitized URL instead.
             If a file with the same name exists, the download is skipped.
         hash_prefix: The expected hash prefix of the file, formatted as `"alg:prefix"`.
+        extract: Whether to extract archives or not.
         quiet: Whether to keep it quiet in the terminal or not.
+
+    Returns:
+        The local file name. If :py:`extract=True`, the local directory name containing
+        the extracted files is returned instead.
     """
 
     if filename is None:
@@ -91,5 +101,27 @@ def download(
             f"The hash of the downloaded file ({alg}:{hex_hash}) does not match "
             f"the expected hash prefix ({alg}:{prefix})."
         )
+
+    if extract:
+        xd = f"{filename}+x"
+
+        if os.path.exists(xd):
+            return xd
+        elif not quiet:
+            print(f"Extracting to {xd}", file=sys.stderr)
+
+        with tempfile.TemporaryDirectory() as td:
+            if tarfile.is_tarfile(filename):
+                with tarfile.TarFile(filename, "r") as f:
+                    f.extractall(td)
+            elif zipfile.is_zipfile(filename):
+                with zipfile.ZipFile(filename, "r") as f:
+                    f.extractall(td)
+            else:
+                raise ValueError("Unknown archive format.")
+
+            shutil.move(td, xd)
+
+        return xd
 
     return filename

@@ -14,12 +14,12 @@ __all__ = [
     "load_model",
 ]
 
+import os
 import torch
 import torch.nn as nn
 
 from torch import Tensor
 from typing import Optional
-from zipfile import ZipFile
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
@@ -123,8 +123,13 @@ def load_model(
 
     card = load_cards(__name__)[name]
 
-    with ZipFile(download(card.url, hash_prefix=card.hash), "r") as f:
-        state = torch.load(f.open("checkpoint-last.pth"), **kwargs)
+    state = torch.load(
+        os.path.join(
+            download(card.url, hash_prefix=card.hash, extract=True),
+            "checkpoint-last.pth",
+        ),
+        **kwargs,
+    )
 
     if ema:
         state = state["model_ema1"]
