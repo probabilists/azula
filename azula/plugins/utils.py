@@ -62,14 +62,11 @@ def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
 
 @contextmanager
 def patch_diffusers():
-    from tqdm import std
     from unittest.mock import patch
 
     with (
-        patch("diffusers.utils.logging.tqdm_lib", std),
-        patch("transformers.utils.logging.tqdm_lib", std),
+        patch("transformers.modeling_utils.logger.warning"),
         patch("transformers.modeling_utils.logger.warning_once"),
-        patch("transformers.models.t5.tokenization_t5_fast.logger.warning_once"),
     ):
         yield
 
