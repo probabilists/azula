@@ -1,19 +1,7 @@
 r"""Ablated diffusion model (ADM) plugin.
 
-This plugin depends on the `guided_diffusion` module in the `openai/guided-diffusion
-<https://github.com/openai/guided-diffusion>`_ repository. To use it, clone the
-repository to your machine
-
-.. code-block:: console
-
-    git clone https://github.com/openai/guided-diffusion
-
-and add it to your Python path before importing the plugin.
-
 .. code-block:: python
 
-    import sys; sys.path.append("path/to/guided-diffusion")
-    ...
     from azula.plugins import adm
 
 References:
@@ -30,21 +18,15 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from torch.utils.checkpoint import checkpoint
 from typing import Optional, Sequence
 
-from azula.debug import RaiseMock
 from azula.denoise import Denoiser, GaussianPosterior
 from azula.hub import download
 from azula.nn.utils import get_module_dtype, skip_init
 from azula.noise import Schedule, VPSchedule
 
+from ._src import unet
 from ..utils import load_cards
-
-try:
-    from guided_diffusion import unet  # type: ignore
-except ImportError as e:
-    unet = RaiseMock(name="guided_diffusion.unet", error=e)
 
 
 class AblatedDenoiser(Denoiser):
@@ -218,11 +200,3 @@ def make_model(
         discrete_schedule=discrete_schedule,
         discrete_steps=discrete_steps,
     )
-
-
-# fmt: off
-def monkey_checkpoint(func, inputs, params, flag):
-    return checkpoint(func, *inputs, use_reentrant=False)
-
-unet.checkpoint = monkey_checkpoint
-# fmt: on

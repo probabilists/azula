@@ -74,10 +74,6 @@ Alternatively, Azula's plugin interface allows to load pre-trained models and us
 
 .. code-block:: python
 
-   import sys
-
-   sys.path.append("path/to/guided-diffusion")
-
    from azula.plugins import adm
    from azula.sample import DDIMSampler
 

@@ -68,10 +68,6 @@ x0 = sampler(x1)
 Alternatively, Azula's plugin interface allows to load pre-trained models and use them with the same convenient interface.
 
 ```python
-import sys
-
-sys.path.append("path/to/guided-diffusion")
-
 from azula.plugins import adm
 from azula.sample import DDIMSampler
 
