@@ -116,7 +116,7 @@ class Sampler(abc.ABC):
             A noisy tensor :math:`x_{t_T}`, with shape :math:`(*)`.
         """
 
-        t_T = self.timesteps[-1]
+        t_T = self.timesteps[0]
 
         alpha_T, sigma_T = self.denoiser.schedule(t_T)
         alpha_T, sigma_T = alpha_T.to(**kwargs), sigma_T.to(**kwargs)
