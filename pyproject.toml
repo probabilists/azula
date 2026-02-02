@@ -63,6 +63,9 @@ extend-select = ["B", "I", "W"]
 ignore = ["E731", "E741"]
 preview = true
 
+[tool.ruff.lint.extend-per-file-ignores]
+"*.ipynb" = ["E402"]
+
 [tool.ruff.lint.isort]
 lines-between-types = 1
 relative-imports-order = "closest-to-furthest"
