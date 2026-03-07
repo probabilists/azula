@@ -69,7 +69,7 @@ class ElucidatedSchedule(Schedule):
         upper = self.sigma_max ** (1 / self.rho)
         return torch.pow((1 - t) * lower + t * upper, self.rho)
 
-    def forward(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
 
 
