@@ -4,9 +4,9 @@ import pytest
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from torch import Tensor
 from torch.distributions import Normal
-from typing import Any, Sequence, Tuple
 
 from azula.denoise import (
     GaussianDenoiser,
@@ -21,7 +21,7 @@ from azula.noise import RectifiedSchedule, Schedule, VPSchedule
 
 
 class Dummy(nn.Module):
-    def __init__(self, features: int = 5, with_label: bool = False):
+    def __init__(self, features: int = 5, with_label: bool = False) -> None:
         super().__init__()
 
         self.with_label = with_label
@@ -32,14 +32,14 @@ class Dummy(nn.Module):
 
         self.time_encoding = SineEncoding(64)
 
-    def forward(self, x_t: Tensor, t: Tensor, label: Any = None):
+    def forward(self, x_t: Tensor, t: Tensor, label: str | None = None) -> Tensor:
         y = self.l1(x_t)
         y = y + self.time_encoding(t)
         y = self.relu(y)
         y = self.l2(y)
 
         if self.with_label:
-            assert label is not None
+            assert isinstance(label, str)
         else:
             assert label is None
 
@@ -49,7 +49,7 @@ class Dummy(nn.Module):
 @pytest.mark.parametrize("isotropic", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
 @pytest.mark.parametrize("channels", [5])
-def test_GaussianPosterior(isotropic: bool, batch: Sequence[int], channels: int):
+def test_GaussianPosterior(isotropic: bool, batch: Sequence[int], channels: int) -> None:
     mean = torch.randn(*batch, channels)
 
     if isotropic:
@@ -69,7 +69,7 @@ def test_GaussianPosterior(isotropic: bool, batch: Sequence[int], channels: int)
 @pytest.mark.parametrize("cov", ["dplr", "precond"])
 @pytest.mark.parametrize("batch", [(), (64,)])
 @pytest.mark.parametrize("channels", [5])
-def test_GaussianDenoiser(cov: str, batch: Sequence[int], channels: int):
+def test_GaussianDenoiser(cov: str, batch: Sequence[int], channels: int) -> None:
     data = torch.randn(256, channels)
     mean = torch.mean(data, dim=0)
 
@@ -91,10 +91,10 @@ def test_GaussianDenoiser(cov: str, batch: Sequence[int], channels: int):
 
 
 class ReSchedule(Schedule):
-    def __init__(self, schedule: Schedule):
+    def __init__(self, schedule: Schedule) -> None:
         self.schedule = schedule
 
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         alpha, sigma = self.schedule(t)
         return torch.ones_like(alpha), sigma / alpha
 
@@ -110,7 +110,7 @@ def test_denoisers(
     with_label: bool,
     batch: Sequence[int],
     channels: int,
-):
+) -> None:
     denoiser = denoiser_cls(
         backbone=Dummy(channels, with_label),
         schedule=schedule_cls(),

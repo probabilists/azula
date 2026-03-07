@@ -3,7 +3,7 @@ r"""Tests for the azula.linalg.solve module."""
 import pytest
 import torch
 
-from typing import Sequence
+from collections.abc import Iterator, Sequence
 
 from azula.linalg.covariance import (
     DiagonalCovariance,
@@ -15,7 +15,7 @@ from azula.linalg.covariance import (
 
 
 @pytest.fixture(autouse=True, scope="module")
-def torch_float64():
+def torch_float64() -> Iterator[None]:
     default = torch.get_default_dtype()
 
     try:
@@ -36,7 +36,7 @@ def torch_float64():
 )
 @pytest.mark.parametrize("shape", [(5,), (3, 5)])
 @pytest.mark.parametrize("batch", [(), (256,), (16, 16)])
-def test_covariances(covariance_cls: type, shape: Sequence[int], batch: Sequence[int]):
+def test_covariances(covariance_cls: type, shape: Sequence[int], batch: Sequence[int]) -> None:
     X = torch.randn(1024, *shape)
 
     cov = covariance_cls.from_data(X)

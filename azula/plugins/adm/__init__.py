@@ -17,8 +17,8 @@ __all__ = [
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from torch import Tensor
-from typing import Optional, Sequence
 
 from azula.denoise import Denoiser, GaussianPosterior
 from azula.hub import download
@@ -45,12 +45,12 @@ class AblatedDenoiser(Denoiser):
     def __init__(
         self,
         backbone: nn.Module,
-        schedule: Optional[Schedule] = None,
+        schedule: Schedule | None = None,
         clip_mean: bool = False,
         learn_var: bool = False,
         discrete_schedule: str = "linear",
         discrete_steps: int = 1000,
-    ):
+    ) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -87,7 +87,7 @@ class AblatedDenoiser(Denoiser):
         self,
         x_t: Tensor,
         t: Tensor,
-        label: Optional[Tensor] = None,
+        label: Tensor | None = None,
         **kwargs,
     ) -> GaussianPosterior:
         r"""

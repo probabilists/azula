@@ -17,9 +17,9 @@ import math
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from einops.layers.torch import Rearrange
 from torch import Tensor
-from typing import Optional, Sequence, Union
 
 from .attention import MultiheadSelfAttention
 from .embedding import SineEncoding
@@ -47,10 +47,10 @@ class ViTBlock(nn.Module):
         mod_features: int = 0,
         ffn_factor: int = 4,
         ffn_activation: str = "silu",
-        dropout: Optional[float] = None,
+        dropout: float | None = None,
         checkpointing: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__()
 
         self.checkpointing = checkpointing
@@ -102,9 +102,9 @@ class ViTBlock(nn.Module):
     def _forward(
         self,
         x: Tensor,
-        mod: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
+        mod: Tensor | None = None,
+        pos: Tensor | None = None,
+        mask: Tensor | None = None,
     ) -> Tensor:
         if torch.is_tensor(self.ada_zero):
             a, b, c = self.ada_zero
@@ -121,9 +121,9 @@ class ViTBlock(nn.Module):
     def forward(
         self,
         x: Tensor,
-        mod: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
+        mod: Tensor | None = None,
+        pos: Tensor | None = None,
+        mask: Tensor | None = None,
     ) -> Tensor:
         r"""
         Arguments:
@@ -167,10 +167,10 @@ class ViT(nn.Module):
         hid_channels: int = 1024,
         hid_blocks: int = 3,
         spatial: int = 2,
-        patch_size: Union[int, Sequence[int]] = 1,
-        unpatch_size: Union[int, Sequence[int], None] = None,
+        patch_size: int | Sequence[int] = 1,
+        unpatch_size: int | Sequence[int] | None = None,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__()
 
         kwargs.setdefault("rope", True)
@@ -212,8 +212,8 @@ class ViT(nn.Module):
     def forward(
         self,
         x: Tensor,
-        mod: Optional[Tensor] = None,
-        cond: Optional[Tensor] = None,
+        mod: Tensor | None = None,
+        cond: Tensor | None = None,
     ) -> Tensor:
         r"""
         Arguments:

@@ -11,10 +11,10 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from einops import reduce
 from torch import Tensor
 from torch.distributions import Normal
-from typing import Callable
 
 from ..denoise import Denoiser
 from ..sample import Sampler
@@ -34,7 +34,7 @@ class TDSSampler(Sampler):
         denoiser: Denoiser,
         twist: Callable[[Tensor], Tensor],
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -80,7 +80,7 @@ class TDSSampler(Sampler):
         x_t, x_hat, log_p_y, score_y = x_t[k], x_hat[k], log_p_y[k], score_y[k]
 
         # Proposal
-        def ddpm(x_t, x):
+        def ddpm(x_t: Tensor, x: Tensor) -> Normal:
             eps = (x_t - alpha_t * x) / sigma_t
             tau = (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
 

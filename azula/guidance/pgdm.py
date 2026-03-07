@@ -11,8 +11,8 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from torch import Tensor
-from typing import Callable
 
 from ..denoise import Denoiser
 from ..sample import DDIMSampler
@@ -37,7 +37,7 @@ class PGDMSampler(DDIMSampler):
         A: Callable[[Tensor], Tensor],
         A_inv: Callable[[Tensor], Tensor],
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(denoiser, **kwargs)
 
         self.y = y

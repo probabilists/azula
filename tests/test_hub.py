@@ -3,10 +3,12 @@ r"""Tests for the azula.hub module."""
 import os
 import pytest
 
+from pathlib import Path
+
 from azula.hub import download, get_hub_dir, set_hub_dir
 
 
-def test_default_dir():
+def test_default_dir() -> None:
     default_dir = get_hub_dir()
 
     assert isinstance(default_dir, str)
@@ -14,7 +16,7 @@ def test_default_dir():
     os.makedirs(default_dir, exist_ok=True)
 
 
-def test_set_dir(tmp_path):
+def test_set_dir(tmp_path: Path) -> None:
     set_hub_dir(tmp_path)
     cache_dir = get_hub_dir()
 
@@ -22,7 +24,7 @@ def test_set_dir(tmp_path):
     assert os.path.samefile(cache_dir, tmp_path)
 
 
-def test_download(tmp_path):
+def test_download(tmp_path: Path) -> None:
     # Set cache dir
     set_hub_dir(tmp_path)
 

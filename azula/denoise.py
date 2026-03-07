@@ -39,8 +39,8 @@ import math
 import torch
 import torch.nn as nn
 
+from collections.abc import Callable
 from torch import Tensor
-from typing import Callable
 
 from .linalg.covariance import Covariance, IsotropicCovariance
 from .nn.utils import get_module_dtype
@@ -62,7 +62,7 @@ class DiracPosterior(Posterior):
 
     mean: Tensor
 
-    def __init__(self, mean: Tensor):
+    def __init__(self, mean: Tensor) -> None:
         self.mean = mean
 
 
@@ -77,7 +77,7 @@ class GaussianPosterior(Posterior):
     mean: Tensor
     var: Tensor
 
-    def __init__(self, mean: Tensor, var: Tensor):
+    def __init__(self, mean: Tensor, var: Tensor) -> None:
         self.mean = mean
         self.var = var
 
@@ -138,14 +138,14 @@ class GaussianDenoiser(Denoiser):
             :math:`(N_1, ..., N_d, N_1, \dots, N_d)`.
     """
 
-    def __init__(self, mean: Tensor, cov: Covariance, schedule: Schedule):
+    def __init__(self, mean: Tensor, cov: Covariance, schedule: Schedule) -> None:
         super().__init__()
 
         self.mean = mean
         self.cov = cov
         self.schedule = schedule
 
-    def _apply(self, fn: Callable, recurse: bool = True):
+    def _apply(self, fn: Callable[[Tensor], Tensor], recurse: bool = True) -> Denoiser:
         super()._apply(fn, recurse=recurse)
 
         self.mean = fn(self.mean)
@@ -192,7 +192,7 @@ class SimpleDenoiser(Denoiser):
         schedule: A noise schedule.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: Schedule):
+    def __init__(self, backbone: nn.Module, schedule: Schedule) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -284,7 +284,7 @@ class KarrasDenoiser(Denoiser):
         schedule: A noise schedule.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: Schedule):
+    def __init__(self, backbone: nn.Module, schedule: Schedule) -> None:
         super().__init__()
 
         self.backbone = backbone

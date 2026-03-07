@@ -3,14 +3,14 @@ r"""Tests for the azula.linalg.solve module."""
 import pytest
 import torch
 
+from collections.abc import Iterator, Sequence
 from functools import partial
-from typing import Sequence
 
 from azula.linalg.solve import cg, gmres
 
 
 @pytest.fixture(autouse=True, scope="module")
-def torch_float64():
+def torch_float64() -> Iterator[None]:
     default = torch.get_default_dtype()
 
     try:
@@ -21,7 +21,7 @@ def torch_float64():
 
 @pytest.mark.parametrize("rank", [3, 5])
 @pytest.mark.parametrize("batch", [(), (64,)])
-def test_cg(rank: int, batch: Sequence[int]):
+def test_cg(rank: int, batch: Sequence[int]) -> None:
     U = torch.randn(*batch, 5, rank)
     A = partial(torch.einsum, "...ij,...j", U @ U.mT)
 
@@ -45,7 +45,7 @@ def test_cg(rank: int, batch: Sequence[int]):
 
 @pytest.mark.parametrize("rank", [3, 5])
 @pytest.mark.parametrize("batch", [(), (64,)])
-def test_gmres(rank: int, batch: Sequence[int]):
+def test_gmres(rank: int, batch: Sequence[int]) -> None:
     U = torch.randn(*batch, 5, rank)
     V = torch.randn(*batch, rank, 5)
     A = partial(torch.einsum, "...ij,...j", U @ V)

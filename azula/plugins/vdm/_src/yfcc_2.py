@@ -5,7 +5,7 @@ from torch import nn
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, main, skip=None):
+    def __init__(self, main, skip=None) -> None:
         super().__init__()
         self.main = nn.Sequential(*main)
         self.skip = skip if skip else nn.Identity()
@@ -15,7 +15,7 @@ class ResidualBlock(nn.Module):
 
 
 class ResConvBlock(ResidualBlock):
-    def __init__(self, c_in, c_mid, c_out, is_last=False):
+    def __init__(self, c_in, c_mid, c_out, is_last=False) -> None:
         skip = None if c_in == c_out else nn.Conv2d(c_in, c_out, 1, bias=False)
         super().__init__(
             [
@@ -29,7 +29,7 @@ class ResConvBlock(ResidualBlock):
 
 
 class SkipBlock(nn.Module):
-    def __init__(self, main, skip=None):
+    def __init__(self, main, skip=None) -> None:
         super().__init__()
         self.main = nn.Sequential(*main)
         self.skip = skip if skip else nn.Identity()
@@ -39,7 +39,7 @@ class SkipBlock(nn.Module):
 
 
 class FourierFeatures(nn.Module):
-    def __init__(self, in_features, out_features, std=1.0):
+    def __init__(self, in_features, out_features, std=1.0) -> None:
         super().__init__()
         assert out_features % 2 == 0
         self.weight = nn.Parameter(torch.randn([out_features // 2, in_features]) * std)
@@ -50,7 +50,7 @@ class FourierFeatures(nn.Module):
 
 
 class SelfAttention2d(nn.Module):
-    def __init__(self, c_in, n_head=1, dropout_rate=0.1):
+    def __init__(self, c_in, n_head=1, dropout_rate=0.1) -> None:
         super().__init__()
         assert c_in % n_head == 0
         self.norm = nn.GroupNorm(1, c_in)
@@ -75,7 +75,7 @@ def expand_to_planes(input, shape):
 
 
 class YFCC2Model(nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.shape = (3, 512, 512)
         self.min_t = 0.0

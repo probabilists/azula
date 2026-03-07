@@ -35,7 +35,7 @@ class RePaintSampler(DDIMSampler):
         mask: BoolTensor,
         iterations: int = 3,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(denoiser, **kwargs)
 
         self.y = y

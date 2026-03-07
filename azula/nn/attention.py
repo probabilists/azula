@@ -11,7 +11,6 @@ import torch.nn as nn
 from einops import rearrange
 from torch import BoolTensor, Tensor
 from torch.utils.checkpoint import checkpoint
-from typing import Optional, Tuple
 
 from .layers import RMSNorm
 from .utils import promote_dtype
@@ -40,9 +39,9 @@ class MultiheadSelfAttention(nn.Module):
         qkv_bias: bool = True,
         qk_norm: bool = True,
         rope: bool = False,
-        dropout: Optional[float] = None,
+        dropout: float | None = None,
         checkpointing: bool = False,
-    ):
+    ) -> None:
         super().__init__()
 
         assert channels % attention_heads == 0
@@ -79,8 +78,8 @@ class MultiheadSelfAttention(nn.Module):
     def _forward(
         self,
         x: Tensor,
-        pos: Optional[Tensor] = None,
-        mask: Optional[BoolTensor] = None,
+        pos: Tensor | None = None,
+        mask: BoolTensor | None = None,
     ) -> Tensor:
         qkv = self.qkv_proj(x)
         q, k, v = rearrange(qkv, "... L (n H C) -> n ... H L C", n=3, H=self.heads)
@@ -107,8 +106,8 @@ class MultiheadSelfAttention(nn.Module):
     def forward(
         self,
         x: Tensor,
-        theta: Optional[Tensor] = None,
-        mask: Optional[Tensor] = None,
+        theta: Tensor | None = None,
+        mask: Tensor | None = None,
     ) -> Tensor:
         r"""
         Arguments:
@@ -127,7 +126,7 @@ class MultiheadSelfAttention(nn.Module):
 
 
 @promote_dtype
-def apply_rope(q: Tensor, k: Tensor, theta: Tensor) -> Tuple[Tensor, Tensor]:
+def apply_rope(q: Tensor, k: Tensor, theta: Tensor) -> tuple[Tensor, Tensor]:
     r"""
     References:
         | RoFormer: Enhanced Transformer with Rotary Position Embedding (Su et al., 2021)

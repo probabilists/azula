@@ -7,7 +7,7 @@ from torch.nn import functional as F
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, main, skip=None):
+    def __init__(self, main, skip=None) -> None:
         super().__init__()
         self.main = nn.Sequential(*main)
         self.skip = skip if skip else nn.Identity()
@@ -17,7 +17,7 @@ class ResidualBlock(nn.Module):
 
 
 class ResLinearBlock(ResidualBlock):
-    def __init__(self, f_in, f_mid, f_out, is_last=False):
+    def __init__(self, f_in, f_mid, f_out, is_last=False) -> None:
         skip = None if f_in == f_out else nn.Linear(f_in, f_out, bias=False)
         super().__init__(
             [
@@ -31,7 +31,7 @@ class ResLinearBlock(ResidualBlock):
 
 
 class Modulation2d(nn.Module):
-    def __init__(self, state, feats_in, c_out):
+    def __init__(self, state, feats_in, c_out) -> None:
         super().__init__()
         self.state = state
         self.layer = nn.Linear(feats_in, c_out * 2, bias=False)
@@ -42,7 +42,7 @@ class Modulation2d(nn.Module):
 
 
 class ResModConvBlock(ResidualBlock):
-    def __init__(self, state, feats_in, c_in, c_mid, c_out, is_last=False):
+    def __init__(self, state, feats_in, c_in, c_mid, c_out, is_last=False) -> None:
         skip = None if c_in == c_out else nn.Conv2d(c_in, c_out, 1, bias=False)
         super().__init__(
             [
@@ -60,7 +60,7 @@ class ResModConvBlock(ResidualBlock):
 
 
 class SkipBlock(nn.Module):
-    def __init__(self, main, skip=None):
+    def __init__(self, main, skip=None) -> None:
         super().__init__()
         self.main = nn.Sequential(*main)
         self.skip = skip if skip else nn.Identity()
@@ -70,7 +70,7 @@ class SkipBlock(nn.Module):
 
 
 class FourierFeatures(nn.Module):
-    def __init__(self, in_features, out_features, std=1.0):
+    def __init__(self, in_features, out_features, std=1.0) -> None:
         super().__init__()
         assert out_features % 2 == 0
         self.weight = nn.Parameter(torch.randn([out_features // 2, in_features]) * std)
@@ -83,7 +83,7 @@ class FourierFeatures(nn.Module):
 
 
 class SelfAttention2d(nn.Module):
-    def __init__(self, c_in, n_head=1, dropout_rate=0.1):
+    def __init__(self, c_in, n_head=1, dropout_rate=0.1) -> None:
         super().__init__()
         assert c_in % n_head == 0
         self.norm = nn.GroupNorm(1, c_in)
@@ -108,7 +108,7 @@ def expand_to_planes(input, shape):
 
 
 class CC12M1Model(nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.shape = (3, 256, 256)
         self.clip_model = "ViT-B/16"

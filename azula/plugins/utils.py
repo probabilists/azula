@@ -9,12 +9,12 @@ import sys
 import torch
 import yaml
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
-from typing import Dict, Optional
 
 
-def as_torch_dtype(name: Optional[str] = None) -> torch.dtype:
+def as_torch_dtype(name: str | None = None) -> torch.dtype:
     if name is None:
         return None
 
@@ -26,7 +26,7 @@ def as_torch_dtype(name: Optional[str] = None) -> torch.dtype:
         raise ValueError(f"Unknown data type '{name}'.")
 
 
-def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
+def load_cards(plugin: ModuleType) -> dict[str, SimpleNamespace]:
     r"""Returns the name-card mapping of pre-trained models available in a plugin.
 
     Arguments:
@@ -46,11 +46,11 @@ def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
     if isinstance(plugin, str):
         plugin = sys.modules[plugin]
 
-    file = os.path.join(os.path.dirname(plugin.__file__), "cards.yml")
+    file = os.path.join(os.path.dirname(plugin.__file__), "cards.yaml")
 
     assert os.path.exists(file), f"{plugin} is not a plugin"
 
-    with open(file, mode="r") as f:
+    with open(file) as f:
         cards = yaml.safe_load(f)
 
     for card in cards.values():
@@ -61,7 +61,7 @@ def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
 
 
 @contextmanager
-def patch_diffusers():
+def patch_diffusers() -> Iterator[None]:
     from unittest.mock import patch
 
     with (
@@ -71,7 +71,7 @@ def patch_diffusers():
         yield
 
 
-def patch_mmap_safetensors(*modules):
+def patch_mmap_safetensors(*modules: torch.nn.Module) -> None:
     for m in modules:
         for p in m.parameters():
             p.data.sum()

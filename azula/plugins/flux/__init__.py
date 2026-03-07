@@ -28,10 +28,10 @@ __all__ = [
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from einops import rearrange
 from functools import cache
 from torch import Tensor
-from typing import Dict, Optional, Sequence, Tuple, Union
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import get_module_dtype, skip_init
@@ -48,7 +48,7 @@ class AutoEncoder(nn.Module):
         vae: nn.Module,  # AutoencoderKL
         shift: float = 0.0,
         scale: float = 1.0,
-    ):
+    ) -> None:
         super().__init__()
 
         self.vae = vae
@@ -103,7 +103,7 @@ class TextEncoder(nn.Module):
         clip_tokenizer: nn.Module,
         t5: nn.Module,
         t5_tokenizer: nn.Module,
-    ):
+    ) -> None:
         super().__init__()
 
         self.clip = clip
@@ -111,7 +111,7 @@ class TextEncoder(nn.Module):
         self.t5 = t5
         self.t5_tokenizer = t5_tokenizer
 
-    def forward(self, prompt: Union[str, Sequence[str]]) -> Dict[str, Tensor]:
+    def forward(self, prompt: str | Sequence[str]) -> dict[str, Tensor]:
         r"""
         Arguments:
             prompt: A text prompt or list of text prompts.
@@ -165,8 +165,8 @@ class FluxDenoiser(Denoiser):
     def __init__(
         self,
         backbone: nn.Module,
-        schedule: Optional[Schedule] = None,
-    ):
+        schedule: Schedule | None = None,
+    ) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -200,7 +200,7 @@ class FluxDenoiser(Denoiser):
         t: Tensor,
         prompt_clip: Tensor,
         prompt_t5: Tensor,
-        guidance: Union[float, Tensor] = 4.0,
+        guidance: float | Tensor = 4.0,
         **kwargs,
     ) -> DiracPosterior:
         r"""
@@ -260,7 +260,7 @@ class FluxDenoiser(Denoiser):
 def load_model(
     name: str = "flux_1_dev",
     **kwargs,
-) -> Tuple[Denoiser, AutoEncoder, TextEncoder]:
+) -> tuple[Denoiser, AutoEncoder, TextEncoder]:
     r"""Loads a pre-trained Flux latent denoiser.
 
     Arguments:

@@ -18,7 +18,7 @@ class BottleneckPatchEmbed(nn.Module):
 
     def __init__(
         self, img_size=224, patch_size=16, in_chans=3, pca_dim=768, embed_dim=768, bias=True
-    ):
+    ) -> None:
         super().__init__()
         img_size = (img_size, img_size)
         patch_size = (patch_size, patch_size)
@@ -46,7 +46,7 @@ class TimestepEmbedder(nn.Module):
     Embeds scalar timesteps into vector representations.
     """
 
-    def __init__(self, hidden_size, frequency_embedding_size=256):
+    def __init__(self, hidden_size, frequency_embedding_size=256) -> None:
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(frequency_embedding_size, hidden_size, bias=True),
@@ -89,7 +89,7 @@ class LabelEmbedder(nn.Module):
     Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
     """
 
-    def __init__(self, num_classes, hidden_size):
+    def __init__(self, num_classes, hidden_size) -> None:
         super().__init__()
         self.embedding_table = nn.Embedding(num_classes + 1, hidden_size)
         self.num_classes = num_classes
@@ -102,7 +102,7 @@ class LabelEmbedder(nn.Module):
 class Attention(nn.Module):
     def __init__(
         self, dim, num_heads=8, qkv_bias=True, qk_norm=True, attn_drop=0.0, proj_drop=0.0
-    ):
+    ) -> None:
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -161,7 +161,7 @@ class FinalLayer(nn.Module):
     The final layer of JiT.
     """
 
-    def __init__(self, hidden_size, patch_size, out_channels):
+    def __init__(self, hidden_size, patch_size, out_channels) -> None:
         super().__init__()
         self.norm_final = RMSNorm(hidden_size)
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
@@ -178,7 +178,9 @@ class FinalLayer(nn.Module):
 
 
 class JiTBlock(nn.Module):
-    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, attn_drop=0.0, proj_drop=0.0):
+    def __init__(
+        self, hidden_size, num_heads, mlp_ratio=4.0, attn_drop=0.0, proj_drop=0.0
+    ) -> None:
         super().__init__()
         self.norm1 = RMSNorm(hidden_size, eps=1e-6)
         self.attn = Attention(
@@ -228,7 +230,7 @@ class JiT(nn.Module):
         bottleneck_dim=128,
         in_context_len=32,
         in_context_start=8,
-    ):
+    ) -> None:
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = in_channels
@@ -289,9 +291,9 @@ class JiT(nn.Module):
 
         self.initialize_weights()
 
-    def initialize_weights(self):
+    def initialize_weights(self) -> None:
         # Initialize transformer layers:
-        def _basic_init(module):
+        def _basic_init(module) -> None:
             if isinstance(module, nn.Linear):
                 torch.nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:

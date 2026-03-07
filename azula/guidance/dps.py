@@ -11,8 +11,8 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from torch import Tensor
-from typing import Callable
 
 from ..denoise import Denoiser
 from ..sample import DDPMSampler
@@ -36,7 +36,7 @@ class DPSSampler(DDPMSampler):
         A: Callable[[Tensor], Tensor],
         zeta: float = 1.0,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(denoiser, **kwargs)
 
         self.y = y

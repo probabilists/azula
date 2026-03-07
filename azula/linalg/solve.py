@@ -7,16 +7,16 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from torch import Tensor
-from typing import Callable, Optional
 
 
 def cg(
     A: Callable[[Tensor], Tensor],
     b: Tensor,
-    x0: Optional[Tensor] = None,
+    x0: Tensor | None = None,
     iterations: int = 1,
-    dtype: Optional[torch.dtype] = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     r"""Solves a linear system :math:`Ax = b` with conjugate gradient (CG) iterations.
 
@@ -78,9 +78,9 @@ def cg(
 def gmres(
     A: Callable[[Tensor], Tensor],
     b: Tensor,
-    x0: Optional[Tensor] = None,
+    x0: Tensor | None = None,
     iterations: int = 1,
-    dtype: Optional[torch.dtype] = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     r"""Solves a linear system :math:`Ax = b` with generalized minimal residual (GMRES) iterations.
 
@@ -118,13 +118,13 @@ def gmres(
 
     r = r.to(dtype)
 
-    def normalize(x):
+    def normalize(x: Tensor) -> tuple[Tensor, Tensor]:
         norm = torch.linalg.vector_norm(x, dim=-1)
         x = x / torch.clip(norm[..., None], min=epsilon)
 
         return x, norm
 
-    def rotation(a, b):
+    def rotation(a: Tensor, b: Tensor) -> tuple[Tensor, Tensor]:
         c = torch.clip(torch.sqrt(a * a + b * b), min=epsilon)
         return a / c, -b / c
 

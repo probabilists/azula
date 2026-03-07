@@ -41,10 +41,10 @@ import abc
 import math
 import torch
 
+from collections.abc import Iterable, Sequence
 from functools import partial
 from torch import Tensor
 from tqdm import tqdm
-from typing import Iterable, Optional, Sequence, Union
 
 from .denoise import Denoiser
 from .nn.utils import promote_dtype
@@ -71,9 +71,9 @@ class Sampler(abc.ABC):
         stop: float = 0.0,
         steps: int = 64,
         silent: bool = False,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-    ):
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+    ) -> None:
         self.start = start
         self.stop = stop
         self.steps = steps
@@ -96,8 +96,8 @@ class Sampler(abc.ABC):
     def init(
         self,
         shape: Sequence[int],
-        mean: Union[float, Tensor] = 0.0,
-        var: Union[float, Tensor] = 1.0,
+        mean: float | Tensor = 0.0,
+        var: float | Tensor = 1.0,
         **kwargs,
     ) -> Tensor:
         r"""Draws an initial noisy tensor :math:`x_{t_T}`.
@@ -195,7 +195,7 @@ class DDPMSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, **kwargs):
+    def __init__(self, denoiser: Denoiser, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -239,7 +239,7 @@ class DDIMSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, eta: float = 0.0, **kwargs):
+    def __init__(self, denoiser: Denoiser, eta: float = 0.0, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -288,7 +288,7 @@ class EulerSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, **kwargs):
+    def __init__(self, denoiser: Denoiser, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -332,7 +332,7 @@ class HeunSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, **kwargs):
+    def __init__(self, denoiser: Denoiser, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -398,7 +398,7 @@ class zABSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -451,7 +451,7 @@ class zABSampler(Sampler):
                 buffer.pop(0)
 
             coeffs = self._adams_bashforth(u, i=i, n=self.order)
-            integral = sum(b * c for b, c in zip(buffer, coeffs))
+            integral = sum(b * c for b, c in zip(buffer, coeffs, strict=True))
 
             x_s = alpha_s / alpha_t * x_t + alpha_s * integral
             x_t = x_s
@@ -512,7 +512,7 @@ class vABSampler(zABSampler):
                 buffer.pop(0)
 
             coeffs = self._adams_bashforth(u, i=i, n=self.order)
-            integral = sum(b * c for b, c in zip(buffer, coeffs))
+            integral = sum(b * c for b, c in zip(buffer, coeffs, strict=True))
 
             x_s = (alpha_s + sigma_s) / (alpha_t + sigma_t) * x_t + (alpha_s + sigma_s) * integral
             x_t = x_s
@@ -567,7 +567,7 @@ class zEABSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -628,7 +628,7 @@ class zEABSampler(Sampler):
                 buffer.pop(0)
 
             coeffs = self._exponential_adams_bashforth(u, i=i, n=self.order)
-            integral = sum(b * c for b, c in zip(buffer, coeffs))
+            integral = sum(b * c for b, c in zip(buffer, coeffs, strict=True))
 
             x_s = alpha_s / alpha_t * x_t + alpha_s * integral
             x_t = x_s
@@ -680,7 +680,7 @@ class xEABSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -736,7 +736,7 @@ class xEABSampler(Sampler):
                 buffer.pop(0)
 
             coeffs = self._exponential_adams_bashforth(u, i=i, n=self.order)
-            integral = sum(b * c for b, c in zip(buffer, coeffs))
+            integral = sum(b * c for b, c in zip(buffer, coeffs, strict=True))
 
             x_s = sigma_s / sigma_t * x_t - sigma_s * integral
             x_t = x_s
@@ -800,7 +800,7 @@ class REABSampler(Sampler):
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
-    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs):
+    def __init__(self, denoiser: Denoiser, order: int = 2, **kwargs) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser
@@ -859,7 +859,7 @@ class REABSampler(Sampler):
                 buffer.pop(0)
 
             coeffs = self._exponential_adams_bashforth(u, i=i, n=self.order)
-            integral = sum(b * c for b, c in zip(buffer, coeffs))
+            integral = sum(b * c for b, c in zip(buffer, coeffs, strict=True))
 
             x_s = (
                 torch.sqrt((alpha_s**2 + sigma_s**2) / (alpha_t**2 + sigma_t**2)) * x_t
@@ -888,7 +888,7 @@ class PCSampler(Sampler):
         corrections: int = 1,
         delta: float = 0.01,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__(**kwargs)
 
         self.denoiser = denoiser

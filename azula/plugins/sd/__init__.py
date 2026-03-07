@@ -28,8 +28,8 @@ __all__ = [
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from torch import Tensor
-from typing import Dict, Optional, Sequence, Tuple, Union
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import get_module_dtype, skip_init
@@ -45,7 +45,7 @@ class AutoEncoder(nn.Module):
         self,
         vae: nn.Module,  # AutoencoderKL
         scale: float = 1.0,
-    ):
+    ) -> None:
         super().__init__()
 
         self.vae = vae
@@ -95,13 +95,13 @@ class TextEncoder(nn.Module):
         self,
         clip: nn.Module,
         tokenizer: nn.Module,
-    ):
+    ) -> None:
         super().__init__()
 
         self.clip = clip
         self.tokenizer = tokenizer
 
-    def forward(self, prompt: Union[str, Sequence[str]]) -> Dict[str, Tensor]:
+    def forward(self, prompt: str | Sequence[str]) -> dict[str, Tensor]:
         r"""
         Arguments:
             prompt: A text prompt or list of text prompts.
@@ -152,9 +152,9 @@ class StableDenoiser(Denoiser):
         self,
         backbone: nn.Module,
         sigmas: Tensor,
-        schedule: Optional[Schedule] = None,
+        schedule: Schedule | None = None,
         prediction: str = "epsilon",
-    ):
+    ) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -226,7 +226,7 @@ class StableDenoiser(Denoiser):
 def load_model(
     name: str,
     **kwargs,
-) -> Tuple[Denoiser, AutoEncoder, TextEncoder]:
+) -> tuple[Denoiser, AutoEncoder, TextEncoder]:
     r"""Loads a pre-trained stable latent denoiser.
 
     Arguments:

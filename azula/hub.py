@@ -17,8 +17,6 @@ import tempfile
 import torch
 import zipfile
 
-from typing import Optional
-
 AZULA_HUB: str = os.path.expanduser("~/.cache/azula/hub")
 
 
@@ -28,7 +26,7 @@ def get_hub_dir() -> str:
     return AZULA_HUB
 
 
-def set_hub_dir(cache_dir: str):
+def set_hub_dir(cache_dir: str) -> None:
     r"""Sets the cache directory used for storing models & weights."""
 
     global AZULA_HUB
@@ -41,8 +39,8 @@ def set_hub_dir(cache_dir: str):
 
 def download(
     url: str,
-    filename: Optional[str] = None,
-    hash_prefix: Optional[str] = None,
+    filename: str | None = None,
+    hash_prefix: str | None = None,
     extract: bool = False,
     quiet: bool = False,
 ) -> str:

@@ -30,8 +30,8 @@ class AttentionPool2d(nn.Module):
         spacial_dim: int,
         embed_dim: int,
         num_heads_channels: int,
-        output_dim: int = None,
-    ):
+        output_dim: int | None = None,
+    ) -> None:
         super().__init__()
         self.positional_embedding = nn.Parameter(
             th.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5
@@ -89,7 +89,7 @@ class Upsample(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, dims=2, out_channels=None):
+    def __init__(self, channels, use_conv, dims=2, out_channels=None) -> None:
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -119,7 +119,7 @@ class Downsample(nn.Module):
                  downsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, dims=2, out_channels=None):
+    def __init__(self, channels, use_conv, dims=2, out_channels=None) -> None:
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -166,7 +166,7 @@ class ResBlock(TimestepBlock):
         use_checkpoint=False,
         up=False,
         down=False,
-    ):
+    ) -> None:
         super().__init__()
         self.channels = channels
         self.emb_channels = emb_channels
@@ -262,7 +262,7 @@ class AttentionBlock(nn.Module):
         num_head_channels=-1,
         use_checkpoint=False,
         use_new_attention_order=False,
-    ):
+    ) -> None:
         super().__init__()
         self.channels = channels
         if num_head_channels == -1:
@@ -296,7 +296,7 @@ class AttentionBlock(nn.Module):
         return (x + h).reshape(b, c, *spatial)
 
 
-def count_flops_attn(model, _x, y):
+def count_flops_attn(model, _x, y) -> None:
     """
     A counter for the `thop` package to count the operations in an
     attention operation.
@@ -321,7 +321,7 @@ class QKVAttentionLegacy(nn.Module):
     A module which performs QKV attention. Matches legacy QKVAttention + input/ouput heads shaping
     """
 
-    def __init__(self, n_heads):
+    def __init__(self, n_heads) -> None:
         super().__init__()
         self.n_heads = n_heads
 
@@ -354,7 +354,7 @@ class QKVAttention(nn.Module):
     A module which performs QKV attention and splits in a different order.
     """
 
-    def __init__(self, n_heads):
+    def __init__(self, n_heads) -> None:
         super().__init__()
         self.n_heads = n_heads
 
@@ -435,7 +435,7 @@ class UNetModel(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         use_new_attention_order=False,
-    ):
+    ) -> None:
         super().__init__()
 
         if num_heads_upsample == -1:
@@ -641,7 +641,7 @@ class SuperResModel(UNetModel):
     Expects an extra kwarg `low_res` to condition on a low-resolution image.
     """
 
-    def __init__(self, image_size, in_channels, *args, **kwargs):
+    def __init__(self, image_size, in_channels, *args, **kwargs) -> None:
         super().__init__(image_size, in_channels * 2, *args, **kwargs)
 
     def forward(self, x, timesteps, low_res=None, **kwargs):
@@ -678,7 +678,7 @@ class EncoderUNetModel(nn.Module):
         resblock_updown=False,
         use_new_attention_order=False,
         pool="adaptive",
-    ):
+    ) -> None:
         super().__init__()
 
         if num_heads_upsample == -1:
