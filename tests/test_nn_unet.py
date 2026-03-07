@@ -25,7 +25,7 @@ def test_UNet(
     spatial: int,
     checkpointing: bool,
     batch_size: int,
-):
+) -> None:
     make = lambda: UNet(
         in_channels=in_channels,
         out_channels=out_channels,

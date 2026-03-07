@@ -11,8 +11,8 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from torch import Tensor
-from typing import Callable, Union
 
 from ..denoise import Denoiser, DiracPosterior
 from ..noise import Schedule
@@ -33,8 +33,8 @@ class TMPDenoiser(Denoiser):
         denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
-        var_y: Union[float, Tensor],
-    ):
+        var_y: float | Tensor,
+    ) -> None:
         super().__init__()
 
         self.denoiser = denoiser
@@ -59,10 +59,10 @@ class TMPDenoiser(Denoiser):
             x_hat = q.mean
             y_hat = self.A(x_hat)
 
-        def At(v):
+        def At(v: Tensor) -> Tensor:
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
-        def cov_x(v):
+        def cov_x(v: Tensor) -> Tensor:
             return gamma_t * torch.autograd.grad(x_hat, x_t, v, retain_graph=True)[0]
 
         var_Ax = self.A(cov_x(At(torch.ones_like(y_hat))))

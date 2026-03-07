@@ -11,9 +11,14 @@ __all__ = [
 import torch
 import torch.nn as nn
 
+from collections.abc import Callable
 from functools import reduce, wraps
+from torch import Tensor
 from torch._C._functorch import is_gradtrackingtensor
-from typing import Callable
+from torch.autograd.function import FunctionCtx
+from typing import TypeVar
+
+T = TypeVar("T")
 
 
 def get_module_dtype(module: nn.Module) -> torch.dtype:
@@ -65,7 +70,11 @@ def get_module_device(module: nn.Module) -> torch.device:
 
 class CheckpointReentrant(torch.autograd.Function):
     @staticmethod
-    def setup_context(ctx, inputs, outputs):
+    def setup_context(
+        ctx: FunctionCtx,
+        inputs: tuple[Callable[..., Tensor | tuple[Tensor, ...]], Tensor],
+        outputs: Tensor | tuple[Tensor, ...],
+    ) -> None:
         func, *xs = inputs
 
         xs = [x.detach() for x in xs]
@@ -75,12 +84,12 @@ class CheckpointReentrant(torch.autograd.Function):
         ctx.func = func
 
     @staticmethod
-    def forward(func, *xs):
+    def forward(func: Callable[..., Tensor | tuple[Tensor, ...]], *xs: Tensor) -> T:
         return func(*xs)
 
     @staticmethod
     @torch.autograd.function.once_differentiable
-    def vjp(ctx, *grad_ys):
+    def vjp(ctx: FunctionCtx, *grad_ys: Tensor) -> tuple[None, Tensor]:
         xs = ctx.saved_tensors
 
         with torch.enable_grad():
@@ -96,7 +105,7 @@ class CheckpointReentrant(torch.autograd.Function):
 
     @staticmethod
     @torch.autograd.function.once_differentiable
-    def jvp(ctx, grad_func, *grad_xs):
+    def jvp(ctx: FunctionCtx, grad_func: None, *grad_xs: Tensor) -> Tensor | tuple[Tensor, ...]:
         xs = ctx.saved_tensors
 
         _, grad_ys = torch.func.jvp(ctx.func, xs, grad_xs)
@@ -104,7 +113,7 @@ class CheckpointReentrant(torch.autograd.Function):
         return grad_ys
 
 
-def checkpoint(f: Callable, reentrant: bool = False) -> Callable:
+def checkpoint(f: Callable[..., T], reentrant: bool = False) -> Callable[..., T]:
     r"""Applies activation checkpointing to a function.
 
     Activation checkpointing reduces memory consumption by storing the inputs of the
@@ -124,7 +133,10 @@ def checkpoint(f: Callable, reentrant: bool = False) -> Callable:
     """
 
     @wraps(f)
-    def g(*args, **kwargs):
+    def g(*args, **kwargs) -> T:
+        if not torch.is_grad_enabled():
+            return f(*args, **kwargs)
+
         mask = [
             torch.is_tensor(arg)
             and torch.is_floating_point(arg)
@@ -132,10 +144,10 @@ def checkpoint(f: Callable, reentrant: bool = False) -> Callable:
             for arg in args
         ]
 
-        tensors = [arg for include, arg in zip(mask, args) if include]
-        others = [arg for include, arg in zip(mask, args) if not include]
+        tensors = [arg for include, arg in zip(mask, args, strict=True) if include]
+        others = [arg for include, arg in zip(mask, args, strict=True) if not include]
 
-        def h(*tensors):
+        def h(*tensors: Tensor) -> T:
             it, io = iter(tensors), iter(others)
             args = (next(it if include else io) for include in mask)
             return f(*args, **kwargs)
@@ -162,7 +174,7 @@ class skip_init(torch.overrides.TorchFunctionMode):
         ...    layer = nn.Linear(3, 5)
     """
 
-    def __torch_function__(self, func, types, args=(), kwargs=None):
+    def __torch_function__(self, func, types, args=(), kwargs=None) -> Tensor:  # noqa: ANN001
         kwargs = kwargs or {}
         if getattr(func, "__module__", None) == "torch.nn.init":
             if "tensor" in kwargs:
@@ -173,7 +185,7 @@ class skip_init(torch.overrides.TorchFunctionMode):
             return func(*args, **kwargs)
 
 
-def promote_dtype(f: Callable, min_dtype: torch.dtype = torch.float32) -> Callable:
+def promote_dtype(f: Callable[..., T], min_dtype: torch.dtype = torch.float32) -> Callable[..., T]:
     r"""Applies data type promotion to a function.
 
     Arguments:
@@ -185,7 +197,7 @@ def promote_dtype(f: Callable, min_dtype: torch.dtype = torch.float32) -> Callab
     """
 
     @wraps(f)
-    def g(*args, **kwargs):
+    def g(*args, **kwargs) -> T:
         dtypes = [arg.dtype for arg in args]
         dtype = reduce(torch.promote_types, dtypes)
 

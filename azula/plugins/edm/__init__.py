@@ -32,7 +32,6 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from typing import Optional, Tuple
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
@@ -56,7 +55,9 @@ class ElucidatedSchedule(Schedule):
         rho: A hyper-parameter :math:`\rho \in \mathbb{R}_+`.
     """
 
-    def __init__(self, sigma_min: float = 0.002, sigma_max: float = 80.0, rho: float = 7.0):
+    def __init__(
+        self, sigma_min: float = 0.002, sigma_max: float = 80.0, rho: float = 7.0
+    ) -> None:
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.rho = rho
@@ -69,7 +70,7 @@ class ElucidatedSchedule(Schedule):
         upper = self.sigma_max ** (1 / self.rho)
         return torch.pow((1 - t) * lower + t * upper, self.rho)
 
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
 
 
@@ -81,7 +82,7 @@ class ElucidatedDenoiser(Denoiser):
         schedule: A noise schedule. If :py:`None`, use :class:`ElucidatedSchedule` instead.
     """
 
-    def __init__(self, backbone: nn.Module, schedule: Optional[Schedule] = None):
+    def __init__(self, backbone: nn.Module, schedule: Schedule | None = None) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -95,7 +96,7 @@ class ElucidatedDenoiser(Denoiser):
         self,
         x_t: Tensor,
         t: Tensor,
-        label: Optional[Tensor] = None,
+        label: Tensor | None = None,
         **kwargs,
     ) -> DiracPosterior:
         r"""

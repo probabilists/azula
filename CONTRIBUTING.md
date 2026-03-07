@@ -21,7 +21,7 @@ If you like the project and wish to contribute, you can start by looking at issu
 To get started with contributing code, we recommend to install Azula in [editable mode](https://pip.pypa.io/en/latest/topics/local-project-installs) with its development dependencies.
 
 ```
-pip install -e .[docs,lint,test]
+pip install -e .[dev,docs,test]
 ```
 
 Optionally, we also provide pre-commit hooks to ensure that the code you commit adheres to our conventions.

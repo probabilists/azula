@@ -29,7 +29,7 @@ def test_ViT(
     rope: bool,
     checkpointing: bool,
     batch_size: int,
-):
+) -> None:
     make = lambda: ViT(
         in_channels=in_channels,
         out_channels=out_channels,

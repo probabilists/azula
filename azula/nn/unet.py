@@ -8,9 +8,9 @@ __all__ = [
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from einops.layers.torch import Rearrange
 from torch import Tensor
-from typing import Optional, Sequence, Union
 
 from .layers import ConvNd, LayerNorm, RMSNorm
 from .utils import checkpoint
@@ -39,10 +39,10 @@ class UNetBlock(nn.Module):
         groups: int = 16,
         ffn_factor: int = 1,
         spatial: int = 2,
-        dropout: Optional[float] = None,
+        dropout: float | None = None,
         checkpointing: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__()
 
         self.checkpointing = checkpointing
@@ -83,7 +83,7 @@ class UNetBlock(nn.Module):
             ConvNd(ffn_factor * channels, channels, spatial=spatial, **kwargs),
         )
 
-    def _forward(self, x: Tensor, mod: Optional[Tensor] = None) -> Tensor:
+    def _forward(self, x: Tensor, mod: Tensor | None = None) -> Tensor:
         if torch.is_tensor(self.ada_zero):
             a, b, c = self.ada_zero
         else:
@@ -98,7 +98,7 @@ class UNetBlock(nn.Module):
     def forward(
         self,
         x: Tensor,
-        mod: Optional[Tensor] = None,
+        mod: Tensor | None = None,
     ) -> Tensor:
         r"""
         Arguments:
@@ -139,13 +139,13 @@ class UNet(nn.Module):
         cond_channels: int = 0,
         hid_channels: Sequence[int] = (64, 128, 256),
         hid_blocks: Sequence[int] = (3, 3, 3),
-        kernel_size: Union[int, Sequence[int]] = 3,
-        stride: Union[int, Sequence[int]] = 2,
+        kernel_size: int | Sequence[int] = 3,
+        stride: int | Sequence[int] = 2,
         spatial: int = 2,
         periodic: bool = False,
         identity_init: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         super().__init__()
 
         assert len(hid_blocks) == len(hid_channels)
@@ -206,8 +206,8 @@ class UNet(nn.Module):
     def forward(
         self,
         x: Tensor,
-        mod: Optional[Tensor] = None,
-        cond: Optional[Tensor] = None,
+        mod: Tensor | None = None,
+        cond: Tensor | None = None,
     ) -> Tensor:
         r"""
         Arguments:

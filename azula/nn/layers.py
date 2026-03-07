@@ -14,9 +14,9 @@ import string
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from einops.layers.torch import Rearrange
 from torch import Tensor
-from typing import Sequence, Union
 
 from .utils import promote_dtype
 
@@ -127,7 +127,7 @@ class LayerNorm(nn.Module):
         eps: A numerical stability term.
     """
 
-    def __init__(self, dim: Union[int, Sequence[int]], eps: float = 1e-5):
+    def __init__(self, dim: int | Sequence[int], eps: float = 1e-5) -> None:
         super().__init__()
 
         self.dim = dim
@@ -168,7 +168,7 @@ class RMSNorm(nn.Module):
         eps: A numerical stability term.
     """
 
-    def __init__(self, dim: Union[int, Sequence[int]], eps: float = 1e-5):
+    def __init__(self, dim: int | Sequence[int], eps: float = 1e-5) -> None:
         super().__init__()
 
         self.dim = dim
@@ -207,7 +207,7 @@ def Patchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearrang
     ABC = string.ascii_uppercase[:ndim]
     abc = string.ascii_lowercase[:ndim]
 
-    in_shape = (f"({A} {a})" for A, a in zip(ABC, abc))
+    in_shape = (f"({A} {a})" for A, a in zip(ABC, abc, strict=True))
     in_shape = "... Z " + " ".join(in_shape)
 
     if channel_last:
@@ -215,7 +215,7 @@ def Patchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearrang
     else:
         out_shape = "... (Z " + " ".join(abc) + ") " + " ".join(ABC)
 
-    lengths = {a: size for a, size in zip(abc, patch_shape)}
+    lengths = {a: size for a, size in zip(abc, patch_shape, strict=True)}
 
     return Rearrange(f"{in_shape} -> {out_shape}", **lengths)
 
@@ -233,7 +233,7 @@ def Unpatchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearra
     ABC = string.ascii_uppercase[:ndim]
     abc = string.ascii_lowercase[:ndim]
 
-    in_shape = (f"({A} {a})" for A, a in zip(ABC, abc))
+    in_shape = (f"({A} {a})" for A, a in zip(ABC, abc, strict=True))
     in_shape = "... Z " + " ".join(in_shape)
 
     if channel_last:
@@ -241,6 +241,6 @@ def Unpatchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearra
     else:
         out_shape = "... (Z " + " ".join(abc) + ") " + " ".join(ABC)
 
-    lengths = {a: size for a, size in zip(abc, patch_shape)}
+    lengths = {a: size for a, size in zip(abc, patch_shape, strict=True)}
 
     return Rearrange(f"{out_shape} -> {in_shape}", **lengths)

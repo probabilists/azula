@@ -27,8 +27,8 @@ __all__ = [
 
 import torch.nn as nn
 
+from collections.abc import Sequence
 from torch import Tensor
-from typing import Dict, Optional, Sequence, Tuple, Union
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.nn.utils import get_module_dtype, skip_init
@@ -44,7 +44,7 @@ class AutoEncoder(nn.Module):
         self,
         ae: nn.Module,  # AutoencoderDC
         scale: float = 1.0,
-    ):
+    ) -> None:
         super().__init__()
 
         self.ae = ae
@@ -94,7 +94,7 @@ class TextEncoder(nn.Module):
         gemma: nn.Module,
         tokenizer: nn.Module,
         max_length: int = 300,
-    ):
+    ) -> None:
         super().__init__()
 
         self.gemma = gemma
@@ -106,7 +106,7 @@ class TextEncoder(nn.Module):
 
     def forward(
         self,
-        prompt: Union[str, Sequence[str]],
+        prompt: str | Sequence[str],
         instructions: Sequence[str] = [
             "Given a user prompt, generate an 'Enhanced prompt' that provides detailed visual descriptions suitable for image generation. Evaluate the level of detail in the user prompt:",
             "- If the prompt is simple, focus on adding specifics about colors, shapes, sizes, textures, and spatial relationships to create vivid and concrete scenes.",
@@ -117,7 +117,7 @@ class TextEncoder(nn.Module):
             "Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:",
             "User Prompt: ",
         ],
-    ) -> Dict[str, Tensor]:
+    ) -> dict[str, Tensor]:
         r"""
         Arguments:
             prompt: A text prompt or list of text prompts.
@@ -175,8 +175,8 @@ class SanaDenoiser(Denoiser):
     def __init__(
         self,
         backbone: nn.Module,
-        schedule: Optional[Schedule] = None,
-    ):
+        schedule: Schedule | None = None,
+    ) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -237,7 +237,7 @@ class SanaDenoiser(Denoiser):
 def load_model(
     name: str,
     **kwargs,
-) -> Tuple[Denoiser, AutoEncoder, TextEncoder]:
+) -> tuple[Denoiser, AutoEncoder, TextEncoder]:
     r"""Loads a pre-trained Sana latent denoiser.
 
     Arguments:

@@ -44,14 +44,13 @@ import math
 import torch
 
 from torch import Tensor
-from typing import Tuple
 
 
 class Schedule(abc.ABC):
     r"""Abstract noise schedule."""
 
     @abc.abstractmethod
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         r"""
         Arguments:
             t: The time :math:`t`, with shape :math:`(*)`.
@@ -83,11 +82,11 @@ class VESchedule(Schedule):
         sigma_max: The final noise scale :math:`\sigma_\max \in \mathbb{R}_+`.
     """
 
-    def __init__(self, sigma_min: float = 1e-3, sigma_max: float = 1e3):
+    def __init__(self, sigma_min: float = 1e-3, sigma_max: float = 1e3) -> None:
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
 
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
 
     def alpha(self, t: Tensor) -> Tensor:
@@ -116,11 +115,11 @@ class VPSchedule(Schedule):
         sigma_min: The initial noise scale :math:`\sigma_\min \in ]0,1[`.
     """
 
-    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
+    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3) -> None:
         self.alpha_min = alpha_min
         self.sigma_min = sigma_min
 
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
 
     def alpha(self, t: Tensor) -> Tensor:
@@ -142,11 +141,11 @@ class CosineSchedule(Schedule):
         sigma_min: The initial noise scale :math:`\sigma_\min \in ]0,1[`.
     """
 
-    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
+    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3) -> None:
         self.alpha_min = alpha_min
         self.sigma_min = sigma_min
 
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
 
     def alpha(self, t: Tensor) -> Tensor:
@@ -175,11 +174,11 @@ class RectifiedSchedule(Schedule):
         sigma_min: The initial noise scale :math:`\sigma_\min \in ]0,1[`.
     """
 
-    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3):
+    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3) -> None:
         self.alpha_min = alpha_min
         self.sigma_min = sigma_min
 
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
 
     def alpha(self, t: Tensor) -> Tensor:
@@ -210,12 +209,14 @@ class DecaySchedule(Schedule):
         gamma: The decay factor :math:`\gamma \in ]0,1[`.
     """
 
-    def __init__(self, alpha_min: float = 1e-3, sigma_min: float = 1e-3, gamma: float = 0.1):
+    def __init__(
+        self, alpha_min: float = 1e-3, sigma_min: float = 1e-3, gamma: float = 0.1
+    ) -> None:
         self.alpha_min = alpha_min
         self.sigma_min = sigma_min
         self.gamma = gamma
 
-    def __call__(self, t: Tensor) -> Tuple[Tensor, Tensor]:
+    def __call__(self, t: Tensor) -> tuple[Tensor, Tensor]:
         return self.alpha(t), self.sigma(t)
 
     def tau(self, t: Tensor) -> Tensor:

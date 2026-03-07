@@ -15,8 +15,8 @@ import abc
 import math
 import torch
 
+from collections.abc import Sequence
 from torch import Tensor
-from typing import Sequence
 
 
 class Covariance(abc.ABC):
@@ -54,7 +54,7 @@ class Covariance(abc.ABC):
         for k, v in self.__dict__.items():
             if hasattr(v, "to"):
                 new.__dict__[k] = v.to(**kwargs)
-            elif isinstance(v, (list, tuple)):
+            elif isinstance(v, list | tuple):
                 new.__dict__[k] = type(v)(w.to(**kwargs) if hasattr(w, "to") else w for w in v)
             else:
                 new.__dict__[k] = v
@@ -70,7 +70,7 @@ class IsotropicCovariance(Covariance):
 
     lmbda: Tensor
 
-    def __init__(self, lmbda: Tensor):
+    def __init__(self, lmbda: Tensor) -> None:
         self.lmbda = lmbda.reshape(())
 
     @classmethod
@@ -106,7 +106,7 @@ class DiagonalCovariance(Covariance):
 
     D: Tensor
 
-    def __init__(self, D: Tensor):
+    def __init__(self, D: Tensor) -> None:
         self.D = D
 
     @classmethod
@@ -146,7 +146,7 @@ class FullCovariance(Covariance):
 
     C: Tensor
 
-    def __init__(self, C: Tensor):
+    def __init__(self, C: Tensor) -> None:
         self.C = C
 
     @classmethod
@@ -199,7 +199,7 @@ class DPLRCovariance(Covariance):
     V: Tensor
     S: Tensor
 
-    def __init__(self, D: Tensor, V: Tensor, S: Tensor = None):
+    def __init__(self, D: Tensor, V: Tensor, S: Tensor | None = None) -> None:
         self.D, self.V = D, V
 
         if S is None:
@@ -305,7 +305,7 @@ class KroneckerCovariance(Covariance):
     C: Covariance
     Qs: Sequence[Tensor]
 
-    def __init__(self, C: Covariance, Qs: Sequence[Tensor]):
+    def __init__(self, C: Covariance, Qs: Sequence[Tensor]) -> None:
         self.C = C
         self.Qs = tuple(Qs)
 
@@ -333,7 +333,7 @@ class KroneckerCovariance(Covariance):
         if isinstance(other, IsotropicCovariance):
             return KroneckerCovariance(self.C + other, self.Qs)
         elif isinstance(other, KroneckerCovariance):
-            assert all(Q1 is Q2 for Q1, Q2 in zip(self.Qs, other.Qs))
+            assert all(Q1 is Q2 for Q1, Q2 in zip(self.Qs, other.Qs, strict=True))
             return KroneckerCovariance(
                 self.C + other.C,
                 self.Qs,

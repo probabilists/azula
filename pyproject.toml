@@ -32,18 +32,19 @@ keywords = [
 ]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 
 [project.optional-dependencies]
+dev = [
+  "ipykernel>=6.29.0",
+  "pre-commit>=3.7.0",
+  "ruff==0.9.9",
+]
 docs = [
   "docutils==0.19",
   "furo==2024.5.6",
   "myst-nb==1.0.0",
   "sphinx==7.3.7",
-]
-lint = [
-  "pre-commit>=3.7.0",
-  "ruff==0.9.9",
 ]
 test = [
   "pytest>=8.0.0",
@@ -59,12 +60,13 @@ extend-include = ["*.ipynb"]
 line-length = 99
 
 [tool.ruff.lint]
-extend-select = ["B", "I", "W"]
-ignore = ["E731", "E741"]
+extend-select = ["ANN", "B", "I", "UP", "W"]
+ignore = ["ANN002", "ANN003", "E731", "E741"]
 preview = true
 
 [tool.ruff.lint.extend-per-file-ignores]
-"*.ipynb" = ["E402"]
+"*.ipynb" = ["ANN", "E402"]
+"azula/plugins/*/_src/**.py" = ["ANN"]
 
 [tool.ruff.lint.isort]
 lines-between-types = 1

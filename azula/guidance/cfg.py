@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 from torch import Tensor
-from typing import Any, Dict, Union
+from typing import Any
 
 from ..denoise import Denoiser, DiracPosterior
 from ..noise import Schedule
@@ -23,7 +23,7 @@ class CFGDenoiser(Denoiser):
         denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
     """
 
-    def __init__(self, denoiser: Denoiser):
+    def __init__(self, denoiser: Denoiser) -> None:
         super().__init__()
 
         self.denoiser = denoiser
@@ -36,9 +36,9 @@ class CFGDenoiser(Denoiser):
         self,
         x_t: Tensor,
         t: Tensor,
-        positive: Dict[str, Any],
-        negative: Dict[str, Any] = {},  # noqa: B006
-        guidance: Union[float, Tensor] = 1.0,
+        positive: dict[str, Any],
+        negative: dict[str, Any] = {},  # noqa: B006
+        guidance: float | Tensor = 1.0,
         **kwargs,
     ) -> DiracPosterior:
         r"""

@@ -4,9 +4,9 @@ import pytest
 import torch
 import torch.nn as nn
 
+from collections.abc import Sequence
 from functools import partial
 from torch import Tensor
-from typing import Any, Sequence
 
 from azula.denoise import KarrasDenoiser
 from azula.nn.embedding import SineEncoding
@@ -26,7 +26,7 @@ from azula.sample import (
 
 
 class Dummy(nn.Module):
-    def __init__(self, features: int = 5, with_label: bool = False):
+    def __init__(self, features: int = 5, with_label: bool = False) -> None:
         super().__init__()
 
         self.with_label = with_label
@@ -37,14 +37,14 @@ class Dummy(nn.Module):
 
         self.time_encoding = SineEncoding(64)
 
-    def forward(self, x_t: Tensor, t: Tensor, label: Any = None):
+    def forward(self, x_t: Tensor, t: Tensor, label: str | None = None) -> Tensor:
         y = self.l1(x_t)
         y = y + self.time_encoding(t)
         y = self.relu(y)
         y = self.l2(y)
 
         if self.with_label:
-            assert label is not None
+            assert isinstance(label, str)
         else:
             assert label is None
 
@@ -54,7 +54,7 @@ class Dummy(nn.Module):
 @pytest.mark.parametrize("with_label", [False, True])
 @pytest.mark.parametrize("batch", [(), (64,)])
 @pytest.mark.parametrize("channels", [5])
-def test_samplers(with_label: bool, batch: Sequence[int], channels: int):
+def test_samplers(with_label: bool, batch: Sequence[int], channels: int) -> None:
     denoiser = KarrasDenoiser(
         backbone=Dummy(channels, with_label),
         schedule=VPSchedule(),

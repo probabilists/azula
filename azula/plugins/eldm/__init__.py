@@ -39,7 +39,6 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from typing import Optional, Tuple
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
@@ -58,7 +57,7 @@ class AutoEncoder(nn.Module):
         vae: nn.Module,  # AutoencoderKL
         shift: Tensor,
         scale: Tensor,
-    ):
+    ) -> None:
         super().__init__()
 
         self.vae = vae
@@ -115,8 +114,8 @@ class ElucidatedLatentDenoiser(Denoiser):
     def __init__(
         self,
         backbone: nn.Module,
-        schedule: Optional[Schedule] = None,
-    ):
+        schedule: Schedule | None = None,
+    ) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -130,7 +129,7 @@ class ElucidatedLatentDenoiser(Denoiser):
         self,
         z_t: Tensor,
         t: Tensor,
-        label: Optional[Tensor] = None,
+        label: Tensor | None = None,
         **kwargs,
     ) -> DiracPosterior:
         r"""
@@ -164,7 +163,7 @@ class ElucidatedLatentDenoiser(Denoiser):
         return DiracPosterior(mean=mean)
 
 
-def load_model(name: str) -> Tuple[Denoiser, AutoEncoder]:
+def load_model(name: str) -> tuple[Denoiser, AutoEncoder]:
     r"""Loads a pre-trained ELDM (or EDM2) latent denoiser.
 
     Arguments:

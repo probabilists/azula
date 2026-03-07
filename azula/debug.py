@@ -14,7 +14,7 @@ class RaiseMock(Mock):
         error: The error to be raised.
     """
 
-    def __init__(self, error: Exception, **kwargs):
+    def __init__(self, error: Exception, **kwargs) -> None:
         super().__init__(side_effect=error, **kwargs)
 
     def _get_child_mock(self, **kwargs) -> Mock:

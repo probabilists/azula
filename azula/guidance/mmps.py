@@ -11,9 +11,9 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from functools import partial
 from torch import Tensor
-from typing import Callable, Union
 
 from ..denoise import Denoiser, DiracPosterior
 from ..linalg.covariance import Covariance, DiagonalCovariance
@@ -40,10 +40,10 @@ class MMPSDenoiser(Denoiser):
         denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
-        cov_y: Union[Tensor, Covariance],
+        cov_y: Tensor | Covariance,
         solver: str = "gmres",
         iterations: int = 1,
-    ):
+    ) -> None:
         super().__init__()
 
         self.denoiser = denoiser
@@ -79,16 +79,16 @@ class MMPSDenoiser(Denoiser):
             x_hat = q.mean
             y_hat = self.A(x_hat)
 
-        def A(v):
+        def A(v: Tensor) -> Tensor:
             return torch.func.jvp(self.A, (x_hat.detach(),), (v,))[1]
 
-        def At(v):
+        def At(v: Tensor) -> Tensor:
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
-        def cov_x(v):
+        def cov_x(v: Tensor) -> Tensor:
             return gamma_t * torch.autograd.grad(x_hat, x_t, v, retain_graph=True)[0]
 
-        def cov_y(v):
+        def cov_y(v: Tensor) -> Tensor:
             return self.cov_y(v) + A(cov_x(At(v)))
 
         grad = self.y - y_hat

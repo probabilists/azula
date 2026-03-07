@@ -8,9 +8,9 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from functools import partial
 from torch import Tensor
-from typing import Callable
 
 from ..denoise import Denoiser, DiracPosterior
 from ..linalg.covariance import Covariance, IsotropicCovariance
@@ -40,7 +40,7 @@ class JFPSDenoiser(Denoiser):
         cov_x: Covariance,
         solver: str = "cg",
         iterations: int = 1,
-    ):
+    ) -> None:
         super().__init__()
 
         self.denoiser = denoiser
@@ -71,16 +71,16 @@ class JFPSDenoiser(Denoiser):
             x_hat = q.mean.detach().requires_grad_()
             y_hat = self.A(x_hat)
 
-        def A(v):
+        def A(v: Tensor) -> Tensor:
             return torch.func.jvp(self.A, (x_hat.detach(),), (v,))[1]
 
-        def At(v):
+        def At(v: Tensor) -> Tensor:
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
         cov_t = IsotropicCovariance(sigma_t**2 / alpha_t**2)
         cov_x = (self.cov_x.inv + cov_t.inv).inv
 
-        def cov_y(v):
+        def cov_y(v: Tensor) -> Tensor:
             return self.cov_y(v) + A(cov_x(At(v)))
 
         grad = self.y - y_hat

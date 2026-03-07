@@ -31,7 +31,7 @@ class SineEncoding(nn.Module):
         omega: The maximum frequency :math:`\omega`.
     """
 
-    def __init__(self, features: int, omega: float = 1e4):
+    def __init__(self, features: int, omega: float = 1e4) -> None:
         super().__init__()
 
         assert features % 2 == 0

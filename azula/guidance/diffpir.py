@@ -11,9 +11,9 @@ __all__ = [
 
 import torch
 
+from collections.abc import Callable
 from functools import partial
 from torch import Tensor
-from typing import Callable, Union
 
 from ..denoise import Denoiser, DiracPosterior
 from ..linalg.solve import cg, gmres
@@ -38,11 +38,11 @@ class DiffPIRDenoiser(Denoiser):
         denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
-        var_y: Union[float, Tensor],
+        var_y: float | Tensor,
         lmbda: float = 10.0,
         solver: str = "gmres",
         iterations: int = 1,
-    ):
+    ) -> None:
         super().__init__()
 
         self.denoiser = denoiser
@@ -74,10 +74,10 @@ class DiffPIRDenoiser(Denoiser):
             x_hat = q.mean.detach().requires_grad_()
             y_hat = self.A(x_hat)
 
-        def At(v):
+        def At(v: Tensor) -> Tensor:
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
-        def AtA_I(v):
+        def AtA_I(v: Tensor) -> Tensor:
             return At(self.A(v) / self.var_y) + self.lmbda * v / rho_t
 
         grad = (self.y - y_hat) / self.var_y

@@ -18,7 +18,6 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from typing import Optional
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
@@ -41,8 +40,8 @@ class VelocityDenoiser(Denoiser):
     def __init__(
         self,
         backbone: nn.Module,
-        schedule: Optional[Schedule] = None,
-    ):
+        schedule: Schedule | None = None,
+    ) -> None:
         super().__init__()
 
         self.backbone = backbone

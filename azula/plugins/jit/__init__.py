@@ -19,7 +19,6 @@ import torch
 import torch.nn as nn
 
 from torch import Tensor
-from typing import Optional
 
 from azula.denoise import Denoiser, DiracPosterior
 from azula.hub import download
@@ -43,9 +42,9 @@ class JITDenoiser(Denoiser):
     def __init__(
         self,
         backbone: nn.Module,
-        schedule: Optional[Schedule] = None,
+        schedule: Schedule | None = None,
         num_classes: int = 1000,
-    ):
+    ) -> None:
         super().__init__()
 
         self.backbone = backbone
@@ -61,7 +60,7 @@ class JITDenoiser(Denoiser):
         self,
         x_t: Tensor,
         t: Tensor,
-        label: Optional[Tensor] = None,
+        label: Tensor | None = None,
         **kwargs,
     ) -> DiracPosterior:
         r"""

@@ -7,7 +7,7 @@ from .. import utils
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, main, skip=None):
+    def __init__(self, main, skip=None) -> None:
         super().__init__()
         self.skip = skip if skip else nn.Identity()
         self.main = nn.Sequential(*main)
@@ -17,7 +17,7 @@ class ResidualBlock(nn.Module):
 
 
 class ResConvBlock(ResidualBlock):
-    def __init__(self, c_in, c_mid, c_out):
+    def __init__(self, c_in, c_mid, c_out) -> None:
         skip = None if c_in == c_out else nn.Conv2d(c_in, c_out, 1, bias=False)
         super().__init__(
             [
@@ -31,7 +31,7 @@ class ResConvBlock(ResidualBlock):
 
 
 class SelfAttention2d(nn.Module):
-    def __init__(self, c_in, n_head=1):
+    def __init__(self, c_in, n_head=1) -> None:
         super().__init__()
         assert c_in % n_head == 0
         self.n_head = n_head
@@ -50,7 +50,7 @@ class SelfAttention2d(nn.Module):
 
 
 class SkipBlock(nn.Module):
-    def __init__(self, main, skip=None):
+    def __init__(self, main, skip=None) -> None:
         super().__init__()
         self.main = nn.Sequential(*main)
         self.skip = skip if skip else nn.Identity()
@@ -60,7 +60,7 @@ class SkipBlock(nn.Module):
 
 
 class FourierFeatures(nn.Module):
-    def __init__(self, in_features, out_features, std=1.0):
+    def __init__(self, in_features, out_features, std=1.0) -> None:
         super().__init__()
         assert out_features % 2 == 0
         self.weight = nn.Parameter(torch.randn([out_features // 2, in_features]) * std)
@@ -75,7 +75,7 @@ def expand_to_planes(input, shape):
 
 
 class Danbooru128Model(nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.shape = (3, 128, 128)
         self.min_t = utils.get_ddpm_schedule(torch.tensor(0.0)).item()
