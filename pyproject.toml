@@ -78,7 +78,7 @@ preview = true
 version = {attr = "azula.__version__"}
 
 [tool.setuptools.package-data]
-azula = ["plugins/*/*.yml"]
+azula = ["plugins/*/*.yaml"]
 
 [tool.setuptools.packages.find]
 include = ["azula*"]

@@ -27,10 +27,10 @@ pip install -e .[docs,lint,test]
 Optionally, we also provide pre-commit hooks to ensure that the code you commit adheres to our conventions.
 
 ```
-pre-commit install --config pre-commit.yml
+pre-commit install --config pre-commit.yaml
 ```
 
-After installation, pre-commit will automatically execute the [configured hooks](pre-commit.yml) before each commit and provide instructions on how to fix detected issues.
+After installation, pre-commit will automatically execute the [configured hooks](pre-commit.yaml) before each commit and provide instructions on how to fix detected issues.
 
 ### Testing
 

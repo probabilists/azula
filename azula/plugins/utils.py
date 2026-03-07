@@ -46,7 +46,7 @@ def load_cards(plugin: ModuleType) -> Dict[str, SimpleNamespace]:
     if isinstance(plugin, str):
         plugin = sys.modules[plugin]
 
-    file = os.path.join(os.path.dirname(plugin.__file__), "cards.yml")
+    file = os.path.join(os.path.dirname(plugin.__file__), "cards.yaml")
 
     assert os.path.exists(file), f"{plugin} is not a plugin"
 
