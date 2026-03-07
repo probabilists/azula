@@ -198,6 +198,12 @@ def promote_dtype(f: Callable[..., T], min_dtype: torch.dtype = torch.float32) -
 
     @wraps(f)
     def g(*args, **kwargs) -> T:
+        if any(arg.device.type == "mps" for arg in args) and min_dtype is torch.float64:
+            args = [arg.to(device="cpu") for arg in args]
+            device = "mps"
+        else:
+            device = None
+
         dtypes = [arg.dtype for arg in args]
         dtype = reduce(torch.promote_types, dtypes)
 
@@ -205,8 +211,8 @@ def promote_dtype(f: Callable[..., T], min_dtype: torch.dtype = torch.float32) -
         outs = f(*args, **kwargs)
 
         if torch.is_tensor(outs):
-            return outs.to(dtype)
+            return outs.to(dtype=dtype, device=device)
         else:
-            return tuple(out.to(dtype) for out in outs)
+            return tuple(out.to(dtype=dtype, device=device) for out in outs)
 
     return g
