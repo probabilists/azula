@@ -175,7 +175,7 @@ def make_model(
     attention_resolutions: Sequence[int] = (32, 16, 8),
     channel_mult: Sequence[int] = (1, 2, 3, 4),
     num_channels: int = 128,
-    num_classes: int = None,
+    num_classes: int | None = None,
     **kwargs,
 ) -> Denoiser:
     r"""Initializes an ADM denoiser."""
