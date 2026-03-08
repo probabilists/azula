@@ -104,6 +104,7 @@ For more information, check out the :doc:`tutorials <../tutorials>` or the :doc:
     :hidden:
     :maxdepth: 1
 
+    Source <https://github.com/probabilists/azula>
     Contributing <https://github.com/probabilists/azula/blob/master/CONTRIBUTING.md>
     Changelog <https://github.com/probabilists/azula/releases>
     License <https://github.com/probabilists/azula/blob/master/LICENSE>
