@@ -68,6 +68,6 @@ class TMPDenoiser(Denoiser):
         var_Ax = self.A(cov_x(At(torch.ones_like(y_hat))))
 
         grad = (self.y - y_hat) / (self.var_y + var_Ax)
-        grad = torch.autograd.grad(y_hat, x_t, grad)[0]
+        grad = gamma_t * torch.autograd.grad(y_hat, x_t, grad)[0]
 
-        return DiracPosterior(mean=x_hat + gamma_t * grad)
+        return DiracPosterior(mean=x_hat + grad)

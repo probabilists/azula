@@ -93,6 +93,6 @@ class MMPSDenoiser(Denoiser):
 
         grad = self.y - y_hat
         grad = self.solve(A=cov_y, b=grad)
-        grad = torch.autograd.grad(y_hat, x_t, grad)[0]
+        grad = gamma_t * torch.autograd.grad(y_hat, x_t, grad)[0]
 
-        return DiracPosterior(mean=x_hat + gamma_t * grad)
+        return DiracPosterior(mean=x_hat + grad)
