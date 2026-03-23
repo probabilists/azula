@@ -11,6 +11,7 @@ import torch
 from collections.abc import Callable
 from functools import partial
 from torch import Tensor
+from typing import Literal
 
 from ..denoise import Denoiser, DiracPosterior
 from ..linalg.covariance import Covariance, IsotropicCovariance
@@ -27,7 +28,7 @@ class JFPSDenoiser(Denoiser):
         A: The forward operator :math:`x \mapsto A(x)`.
         cov_y: The noise covariance :math:`\Sigma_y`.
         cov_x: The signal covariance :math:`\Sigma_x`.
-        solver: The linear solver name (:py:`"cg"` or :py:`"gmres"`).
+        solver: The linear solver name.
         iterations: The number of solver iterations.
     """
 
@@ -38,7 +39,7 @@ class JFPSDenoiser(Denoiser):
         A: Callable[[Tensor], Tensor],
         cov_y: Covariance,
         cov_x: Covariance,
-        solver: str = "cg",
+        solver: Literal["cg", "gmres"] = "cg",
         iterations: int = 1,
     ) -> None:
         super().__init__()

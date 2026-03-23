@@ -14,6 +14,7 @@ import torch
 from collections.abc import Callable
 from functools import partial
 from torch import Tensor
+from typing import Literal
 
 from ..denoise import Denoiser, DiracPosterior
 from ..linalg.solve import cg, gmres
@@ -29,7 +30,7 @@ class DiffPIRDenoiser(Denoiser):
         A: The forward operator :math:`x \mapsto A x`.
         var_y: The noise variance :math:`\Sigma_y`.
         lmbda: The regularization strength :math:`\lambda \in \mathbb{R}_+`.
-        solver: The linear solver name (:py:`"cg"` or :py:`"gmres"`).
+        solver: The linear solver name.
         iterations: The number of solver iterations.
     """
 
@@ -40,7 +41,7 @@ class DiffPIRDenoiser(Denoiser):
         A: Callable[[Tensor], Tensor],
         var_y: float | Tensor,
         lmbda: float = 10.0,
-        solver: str = "gmres",
+        solver: Literal["cg", "gmres"] = "gmres",
         iterations: int = 1,
     ) -> None:
         super().__init__()
