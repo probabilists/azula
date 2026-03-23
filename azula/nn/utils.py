@@ -1,15 +1,15 @@
 r"""Miscellaneous neural network helpers."""
 
 __all__ = [
-    "get_module_dtype",
-    "get_module_device",
     "checkpoint",
-    "skip_init",
+    "get_module_device",
+    "get_module_dtype",
     "promote_dtype",
+    "skip_init",
 ]
 
 import torch
-import torch.nn as nn
+import torch.utils.checkpoint
 
 from collections.abc import Callable
 from functools import reduce, wraps
@@ -21,7 +21,7 @@ from typing import TypeVar
 T = TypeVar("T")
 
 
-def get_module_dtype(module: nn.Module) -> torch.dtype:
+def get_module_dtype(module: torch.nn.Module) -> torch.dtype:
     r"""Returns the data type of a module.
 
     The module's data type is the first floating-point type in the module's parameters
@@ -42,7 +42,7 @@ def get_module_dtype(module: nn.Module) -> torch.dtype:
     return None
 
 
-def get_module_device(module: nn.Module) -> torch.device:
+def get_module_device(module: torch.nn.Module) -> torch.device:
     r"""Returns the execution device of a module.
 
     The module's device is the first device in the module's parameters or buffers. If
@@ -53,9 +53,12 @@ def get_module_device(module: nn.Module) -> torch.device:
     """
 
     for m in module.modules():
-        if hasattr(m, "_hf_hook") and hasattr(m._hf_hook, "execution_device"):
-            if m._hf_hook.execution_device is not None:
-                return m._hf_hook.execution_device
+        if (
+            hasattr(m, "_hf_hook")
+            and hasattr(m._hf_hook, "execution_device")
+            and m._hf_hook.execution_device is not None
+        ):
+            return m._hf_hook.execution_device
 
         for p in m.parameters(recurse=False):
             if not p.is_meta():
@@ -171,7 +174,7 @@ class skip_init(torch.overrides.TorchFunctionMode):
 
     Example:
         >>> with skip_init():
-        ...    layer = nn.Linear(3, 5)
+        ...    layer = torch.nn.Linear(3, 5)
     """
 
     def __torch_function__(self, func, types, args=(), kwargs=None) -> Tensor:  # noqa: ANN001

@@ -6,17 +6,15 @@ __all__ = [
 
 import math
 import torch
-import torch.nn as nn
 
 from einops import rearrange
 from torch import BoolTensor, Tensor
-from torch.utils.checkpoint import checkpoint
 
 from .layers import RMSNorm
 from .utils import promote_dtype
 
 
-class MultiheadSelfAttention(nn.Module):
+class MultiheadSelfAttention(torch.nn.Module):
     r"""Creates a multi-head self-attention layer.
 
     Arguments:
@@ -28,7 +26,6 @@ class MultiheadSelfAttention(nn.Module):
         qk_norm: Whether to use query-key RMS-normalization or not.
         rope: Whether to use rotary positional embedding (RoPE) or not.
         dropout: The dropout rate in :math:`[0, 1]`.
-        checkpointing: Whether to use activation checkpointing or not.
     """
 
     def __init__(
@@ -40,18 +37,17 @@ class MultiheadSelfAttention(nn.Module):
         qk_norm: bool = True,
         rope: bool = False,
         dropout: float | None = None,
-        checkpointing: bool = False,
     ) -> None:
         super().__init__()
 
         assert channels % attention_heads == 0
 
-        self.qkv_proj = nn.Linear(channels, 3 * channels, bias=qkv_bias)
-        self.y_proj = nn.Linear(channels, channels, bias=False)
+        self.qkv_proj = torch.nn.Linear(channels, 3 * channels, bias=qkv_bias)
+        self.y_proj = torch.nn.Linear(channels, channels, bias=False)
 
         if qk_norm:
-            if hasattr(nn, "RMSNorm"):
-                self.qk_norm = nn.RMSNorm(
+            if hasattr(torch.nn, "RMSNorm"):
+                self.qk_norm = torch.nn.RMSNorm(
                     channels // attention_heads,
                     elementwise_affine=False,
                     eps=1e-5,
@@ -59,28 +55,37 @@ class MultiheadSelfAttention(nn.Module):
             else:
                 self.qk_norm = RMSNorm(dim=-1, eps=1e-5)
         else:
-            self.qk_norm = nn.Identity()
+            self.qk_norm = torch.nn.Identity()
 
         if rope:
             magnitude = torch.exp(math.log(1e-1) * torch.rand(channels // 2, 1))
             direction = torch.randn(channels // 2, pos_channels)
             direction = direction / torch.linalg.norm(direction, dim=-1, keepdim=True)
 
-            self.theta_proj = nn.Linear(pos_channels, channels // 2, bias=False)
+            self.theta_proj = torch.nn.Linear(pos_channels, channels // 2, bias=False)
             self.theta_proj.weight.data.copy_(magnitude * direction)
         else:
             self.theta_proj = None
 
         self.heads = attention_heads
         self.dropout = 0.0 if dropout is None else dropout
-        self.checkpointing = checkpointing
 
-    def _forward(
+    def forward(
         self,
         x: Tensor,
         pos: Tensor | None = None,
         mask: BoolTensor | None = None,
     ) -> Tensor:
+        r"""
+        Arguments:
+            x: The input tokens :math:`x`, with shape :math:`(*, L, H \times C)`.
+            pos: Optional position vectors :math:`p`, with shape :math:`(*, L, P)`.
+            mask: Optional attention mask, with shape :math:`(L, L)`.
+
+        Returns:
+            The ouput tokens :math:`y`, with shape :math:`(*, L, H \times C)`.
+        """
+
         qkv = self.qkv_proj(x)
         q, k, v = rearrange(qkv, "... L (n H C) -> n ... H L C", n=3, H=self.heads)
         q, k = self.qk_norm(q), self.qk_norm(k)
@@ -102,27 +107,6 @@ class MultiheadSelfAttention(nn.Module):
         y = self.y_proj(y)
 
         return y
-
-    def forward(
-        self,
-        x: Tensor,
-        theta: Tensor | None = None,
-        mask: Tensor | None = None,
-    ) -> Tensor:
-        r"""
-        Arguments:
-            x: The input tokens :math:`x`, with shape :math:`(*, L, H \times C)`.
-            pos: Optional position vectors :math:`p`, with shape :math:`(*, L, P)`.
-            mask: Optional attention mask, with shape :math:`(L, L)`.
-
-        Returns:
-            The ouput tokens :math:`y`, with shape :math:`(*, L, H \times C)`.
-        """
-
-        if self.checkpointing:
-            return checkpoint(self._forward, reentrant=not self.training)(x, theta, mask)
-        else:
-            return self._forward(x, theta, mask)
 
 
 @promote_dtype

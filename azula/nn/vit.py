@@ -3,146 +3,23 @@ r"""Vision Transformer (ViT) building blocks.
 References:
     | An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale (Dosovitskiy et al., 2021)
     | https://arxiv.org/abs/2010.11929
-
-    | Scalable Diffusion Models with Transformers (Peebles et al., 2022)
-    | https://arxiv.org/abs/2212.09748
 """
 
 __all__ = [
-    "ViTBlock",
     "ViT",
 ]
 
 import math
 import torch
-import torch.nn as nn
 
 from collections.abc import Sequence
-from einops.layers.torch import Rearrange
 from torch import Tensor
 
-from .attention import MultiheadSelfAttention
-from .embedding import SineEncoding
-from .layers import Patchify, ReLU2, RMSNorm, SwiGLU, Unpatchify
-from .utils import checkpoint
+from .dit import DiT
+from .layers import Patchify, Unpatchify
 
 
-class ViTBlock(nn.Module):
-    r"""Creates a ViT block module.
-
-    Arguments:
-        channels: The number of channels :math:`C`.
-        mod_features: The number of modulating features :math:`D`.
-        ffn_factor: The channel factor in the FFN.
-        ffn_activation: The activation function in the FFN. Options are `relu`, `relu2`,
-            `silu` and `swiglu`.
-        dropout: The dropout rate in :math:`[0, 1]`.
-        checkpointing: Whether to use activation checkpointing or not.
-        kwargs: Keyword arguments passed to :class:`azula.nn.attention.MultiheadSelfAttention`.
-    """
-
-    def __init__(
-        self,
-        channels: int,
-        mod_features: int = 0,
-        ffn_factor: int = 4,
-        ffn_activation: str = "silu",
-        dropout: float | None = None,
-        checkpointing: bool = False,
-        **kwargs,
-    ) -> None:
-        super().__init__()
-
-        self.checkpointing = checkpointing
-
-        # Ada-Norm Zero
-        if hasattr(nn, "RMSNorm"):
-            self.norm = nn.RMSNorm(channels, elementwise_affine=False, eps=1e-5)
-        else:
-            self.norm = RMSNorm(dim=-1, eps=1e-5)
-
-        if mod_features > 0:
-            self.ada_zero = nn.Sequential(
-                nn.Linear(mod_features, mod_features),
-                nn.SiLU(),
-                nn.Linear(mod_features, 3 * channels),
-                Rearrange("... (n C) -> n ... 1 C", n=3),
-            )
-
-            self.ada_zero[-2].weight.data.mul_(1e-2)
-        else:
-            self.ada_zero = nn.Parameter(torch.randn(3, channels))
-            self.ada_zero.data.mul_(1e-2)
-
-        # MSA
-        self.msa = MultiheadSelfAttention(channels, **kwargs)
-
-        # FFN
-        activation_factor = 1
-
-        if ffn_activation == "relu":
-            activation = nn.ReLU()
-        elif ffn_activation == "relu2":
-            activation = ReLU2()
-        elif ffn_activation == "silu":
-            activation = nn.SiLU()
-        elif ffn_activation == "swiglu":
-            activation = SwiGLU()
-            activation_factor = 2
-        else:
-            raise ValueError(f"Unknown activation '{ffn_activation}'.")
-
-        self.ffn = nn.Sequential(
-            nn.Linear(channels, ffn_factor * channels),
-            activation,
-            nn.Identity() if dropout is None else nn.Dropout(dropout),
-            nn.Linear(ffn_factor * channels // activation_factor, channels),
-        )
-
-    def _forward(
-        self,
-        x: Tensor,
-        mod: Tensor | None = None,
-        pos: Tensor | None = None,
-        mask: Tensor | None = None,
-    ) -> Tensor:
-        if torch.is_tensor(self.ada_zero):
-            a, b, c = self.ada_zero
-        else:
-            a, b, c = self.ada_zero(mod)
-
-        y = (a + 1) * self.norm(x) + b
-        y = y + self.msa(y, pos, mask)
-        y = self.ffn(y)
-        y = x + c * y
-
-        return y
-
-    def forward(
-        self,
-        x: Tensor,
-        mod: Tensor | None = None,
-        pos: Tensor | None = None,
-        mask: Tensor | None = None,
-    ) -> Tensor:
-        r"""
-        Arguments:
-            x: The input tokens :math:`x`, with shape :math:`(*, L, C)`.
-            mod: The modulation vector, with shape :math:`(D)` or :math:`(*, D)`.
-            pos: The postition coordinates, with shape :math:`(*, L, N)`.
-            mask: The attention mask, with shape :math:`(*, L, L)`.
-
-        Returns:
-            The ouput tokens :math:`y`, with shape :math:`(*, L, C)`.
-        """
-
-        if self.checkpointing:
-            return checkpoint(self._forward, reentrant=not self.training)(x, mod, pos, mask)
-        else:
-            return self._forward(x, mod, pos, mask)
-
-
-class ViT(nn.Module):
+class ViT(DiT):
     r"""Creates a modulated ViT-like module.
 
     Arguments:
@@ -171,10 +48,6 @@ class ViT(nn.Module):
         unpatch_size: int | Sequence[int] | None = None,
         **kwargs,
     ) -> None:
-        super().__init__()
-
-        kwargs.setdefault("rope", True)
-
         if isinstance(patch_size, int):
             patch_size = [patch_size] * spatial
 
@@ -185,29 +58,20 @@ class ViT(nn.Module):
 
         assert len(patch_size) == len(unpatch_size) == spatial
 
+        super().__init__(
+            in_channels=math.prod(patch_size) * in_channels,
+            out_channels=math.prod(unpatch_size) * out_channels,
+            cond_channels=math.prod(patch_size) * cond_channels,
+            mod_features=mod_features,
+            pos_channels=spatial,
+            hid_channels=hid_channels,
+            hid_blocks=hid_blocks,
+            **kwargs,
+        )
+
         self.patch = Patchify(patch_size, channel_last=True)
         self.unpatch = Unpatchify(unpatch_size, channel_last=True)
         self.spatial = spatial
-
-        self.in_proj = nn.Linear(math.prod(patch_size) * (in_channels + cond_channels), hid_channels)  # fmt: off
-        self.out_proj = nn.Linear(hid_channels, math.prod(patch_size) * out_channels)
-
-        self.pos_embedding = nn.Sequential(
-            SineEncoding(hid_channels, omega=1e2),
-            Rearrange("... N C -> ... (N C)"),
-            nn.Linear(spatial * hid_channels, hid_channels, bias=False),
-        )
-        self.pos_embedding[-1].weight.data.mul_(1e-2)
-
-        self.blocks = nn.ModuleList([
-            ViTBlock(
-                channels=hid_channels,
-                pos_channels=spatial,
-                mod_features=mod_features,
-                **kwargs,
-            )
-            for _ in range(hid_blocks)
-        ])
 
     def forward(
         self,
@@ -225,11 +89,10 @@ class ViT(nn.Module):
             The output tensor, with shape :math:`(B, C_o, L_1, ..., L_N)`.
         """
 
-        if cond is not None:
-            x = torch.cat((x, cond), dim=1)
-
         x = self.patch(x)
-        x = self.in_proj(x)
+
+        if cond is not None:
+            cond = self.patch(cond)
 
         shape = x.shape[1:-1]
 
@@ -237,15 +100,9 @@ class ViT(nn.Module):
         pos = torch.cartesian_prod(*pos)
         pos = torch.reshape(pos, shape=(-1, len(shape)))
 
-        x = torch.flatten(x, 1, -2)
-        x = x + self.pos_embedding(pos)
+        x = x.flatten(1, -2)
+        y = super().forward(x, mod, pos=pos, cond=cond)
+        y = y.unflatten(-2, shape)
+        y = self.unpatch(y)
 
-        for block in self.blocks:
-            x = block(x, mod, pos=pos)
-
-        x = torch.unflatten(x, sizes=shape, dim=-2)
-
-        x = self.out_proj(x)
-        x = self.unpatch(x)
-
-        return x
+        return y

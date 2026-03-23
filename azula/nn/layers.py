@@ -2,17 +2,18 @@ r"""Common layers."""
 
 __all__ = [
     "ConvNd",
-    "ReLU2",
-    "SwiGLU",
     "LayerNorm",
-    "RMSNorm",
     "Patchify",
+    "RMSNorm",
+    "ReLU2",
+    "SineEncoding",
+    "SwiGLU",
     "Unpatchify",
 ]
 
+import math
 import string
 import torch
-import torch.nn as nn
 
 from collections.abc import Sequence
 from einops.layers.torch import Rearrange
@@ -27,7 +28,7 @@ def ConvNd(
     spatial: int = 2,
     identity_init: bool = False,
     **kwargs,
-) -> nn.Module:
+) -> torch.nn.Module:
     r"""Returns an N-dimensional convolutional layer.
 
     Arguments:
@@ -39,10 +40,10 @@ def ConvNd(
     """
 
     CONVS = {
-        0: nn.Linear,
-        1: nn.Conv1d,
-        2: nn.Conv2d,
-        3: nn.Conv3d,
+        0: torch.nn.Linear,
+        1: torch.nn.Conv1d,
+        2: torch.nn.Conv2d,
+        3: torch.nn.Conv3d,
     }
 
     if spatial in CONVS:
@@ -59,7 +60,7 @@ def ConvNd(
         eye = torch.zeros_like(conv.weight.data[:in_channels])
 
         for i in range(min(in_channels, out_channels)):
-            eye[tuple((i, i, *kernel_center))] = 1.0
+            eye[(i, i, *kernel_center)] = 1.0
 
         conv.weight.data[:in_channels].mul_(1e-2)
         conv.weight.data[:in_channels].add_(eye)
@@ -67,7 +68,7 @@ def ConvNd(
     return conv
 
 
-class ReLU2(nn.Module):
+class ReLU2(torch.nn.Module):
     r"""Creates a ReLU² activation layer.
 
     .. math:: y = \max(x, 0)^2
@@ -85,7 +86,7 @@ def relu2(x: Tensor, /) -> Tensor:
     return torch.nn.functional.relu(x).square()
 
 
-class SwiGLU(nn.Module):
+class SwiGLU(torch.nn.Module):
     r"""Creates a SwiGLU activation layer.
 
     .. math:: y = x_1 \times x_2 \times \sigma(x_2)
@@ -113,7 +114,7 @@ def swiglu(x: Tensor, /) -> Tensor:
     return x1 * torch.nn.functional.silu(x2)
 
 
-class LayerNorm(nn.Module):
+class LayerNorm(torch.nn.Module):
     r"""Creates a layer that standardizes features along a dimension.
 
     .. math:: y = \frac{x - \mathbb{E}[x]}{\sqrt{\mathbb{V}[x] + \epsilon}}
@@ -154,7 +155,7 @@ def layer_norm(x: Tensor, /, dim: int = -1, eps: float = 1e-5) -> Tensor:
     return (x - m) * torch.rsqrt(v + eps)
 
 
-class RMSNorm(nn.Module):
+class RMSNorm(torch.nn.Module):
     r"""Creates a layer that normalizes features along a dimension.
 
     .. math:: y = \frac{x}{\sqrt{\mathbb{E}[x^2] + \epsilon}}
@@ -244,3 +245,55 @@ def Unpatchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearra
     lengths = {a: size for a, size in zip(abc, patch_shape, strict=True)}
 
     return Rearrange(f"{out_shape} -> {in_shape}", **lengths)
+
+
+class SineEncoding(torch.nn.Module):
+    r"""Creates a sinusoidal positional encoding.
+
+    .. math::
+        e_{2i} & = \sin \left( x \times \omega^\frac{-2i}{D} \right) \\
+        e_{2i+1} & = \cos \left( x \times \omega^\frac{-2i}{D} \right)
+
+    References:
+        | Attention Is All You Need (Vaswani et al., 2017)
+        | https://arxiv.org/abs/1706.03762
+
+    Arguments:
+        features: The number of embedding features :math:`D`. Must be even.
+        omega: The maximum frequency :math:`\omega`.
+    """
+
+    def __init__(self, features: int, omega: float = 1e4) -> None:
+        super().__init__()
+
+        assert features % 2 == 0
+
+        self.features = features
+        self.omega = omega
+
+    def forward(self, x: Tensor) -> Tensor:
+        r"""
+        Arguments:
+            x: The position :math:`x`, with shape :math:`(*)`.
+
+        Returns:
+            The embedding vector :math:`e`, with shape :math:`(*, D)`.
+        """
+
+        return sine_encoding(x, features=self.features, omega=self.omega)
+
+
+@promote_dtype
+def sine_encoding(x: Tensor, /, features: int, omega: float = 1e4) -> Tensor:
+    x = x.unsqueeze(dim=-1)
+
+    freqs = torch.linspace(0, 1, features // 2, dtype=x.dtype, device=x.device)
+    freqs = torch.exp(math.log(1 / omega) * freqs)
+
+    return torch.cat(
+        (
+            torch.sin(x * freqs),
+            torch.cos(x * freqs),
+        ),
+        dim=-1,
+    )

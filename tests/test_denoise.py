@@ -2,7 +2,6 @@ r"""Tests for the azula.denoise module."""
 
 import pytest
 import torch
-import torch.nn as nn
 
 from collections.abc import Sequence
 from torch import Tensor
@@ -16,19 +15,19 @@ from azula.denoise import (
     SimpleDenoiser,
 )
 from azula.linalg.covariance import DPLRCovariance, KroneckerCovariance
-from azula.nn.embedding import SineEncoding
+from azula.nn.layers import SineEncoding
 from azula.noise import RectifiedSchedule, Schedule, VPSchedule
 
 
-class Dummy(nn.Module):
+class Dummy(torch.nn.Module):
     def __init__(self, features: int = 5, with_label: bool = False) -> None:
         super().__init__()
 
         self.with_label = with_label
 
-        self.l1 = nn.Linear(features, 64)
-        self.l2 = nn.Linear(64, features)
-        self.relu = nn.ReLU()
+        self.l1 = torch.nn.Linear(features, 64)
+        self.l2 = torch.nn.Linear(64, features)
+        self.relu = torch.nn.ReLU()
 
         self.time_encoding = SineEncoding(64)
 

@@ -1,12 +1,11 @@
 r"""U-Net building blocks."""
 
 __all__ = [
-    "UNetBlock",
     "UNet",
+    "UNetBlock",
 ]
 
 import torch
-import torch.nn as nn
 
 from collections.abc import Sequence
 from einops.layers.torch import Rearrange
@@ -16,7 +15,7 @@ from .layers import ConvNd, LayerNorm, RMSNorm
 from .utils import checkpoint
 
 
-class UNetBlock(nn.Module):
+class UNetBlock(torch.nn.Module):
     r"""Creates a modulated U-Net block module.
 
     Arguments:
@@ -53,7 +52,7 @@ class UNetBlock(nn.Module):
         elif norm == "rms":
             self.norm = RMSNorm(dim=-spatial - 1, eps=1e-5)
         elif norm == "group":
-            self.norm = nn.GroupNorm(
+            self.norm = torch.nn.GroupNorm(
                 num_groups=min(groups, channels),
                 num_channels=channels,
                 affine=False,
@@ -63,23 +62,23 @@ class UNetBlock(nn.Module):
             raise NotImplementedError()
 
         if mod_features > 0:
-            self.ada_zero = nn.Sequential(
-                nn.Linear(mod_features, mod_features),
-                nn.SiLU(),
-                nn.Linear(mod_features, 3 * channels),
+            self.ada_zero = torch.nn.Sequential(
+                torch.nn.Linear(mod_features, mod_features),
+                torch.nn.SiLU(),
+                torch.nn.Linear(mod_features, 3 * channels),
                 Rearrange("... (n C) -> n ... C" + " 1" * spatial, n=3),
             )
 
             self.ada_zero[-2].weight.data.mul_(1e-2)
         else:
-            self.ada_zero = nn.Parameter(torch.randn(3, channels, *(1,) * spatial))
+            self.ada_zero = torch.nn.Parameter(torch.randn(3, channels, *(1,) * spatial))
             self.ada_zero.data.mul_(1e-2)
 
         # Block
-        self.ffn = nn.Sequential(
+        self.ffn = torch.nn.Sequential(
             ConvNd(channels, ffn_factor * channels, spatial=spatial, **kwargs),
-            nn.SiLU(),
-            nn.Identity() if dropout is None else nn.Dropout(dropout),
+            torch.nn.SiLU(),
+            torch.nn.Identity() if dropout is None else torch.nn.Dropout(dropout),
             ConvNd(ffn_factor * channels, channels, spatial=spatial, **kwargs),
         )
 
@@ -115,7 +114,7 @@ class UNetBlock(nn.Module):
             return self._forward(x, mod)
 
 
-class UNet(nn.Module):
+class UNet(torch.nn.Module):
     r"""Creates a modulated U-Net module.
 
     Arguments:
@@ -156,17 +155,17 @@ class UNet(nn.Module):
         if isinstance(stride, int):
             stride = [stride] * spatial
 
-        conv_kwargs = dict(
+        conv_kwargs = dict(  # noqa: C408
             kernel_size=tuple(kernel_size),
             padding=tuple(k // 2 for k in kernel_size),
             padding_mode="circular" if periodic else "zeros",
             spatial=spatial,
         )
 
-        self.descent, self.ascent = nn.ModuleList(), nn.ModuleList()
+        self.descent, self.ascent = torch.nn.ModuleList(), torch.nn.ModuleList()
 
         for i, num_blocks in enumerate(hid_blocks):
-            do, up = nn.ModuleList(), nn.ModuleList()
+            do, up = torch.nn.ModuleList(), torch.nn.ModuleList()
 
             for _ in range(num_blocks):
                 do.append(UNetBlock(hid_channels[i], **conv_kwargs, **kwargs))
@@ -184,7 +183,7 @@ class UNet(nn.Module):
                     ),
                 )
 
-                up.append(nn.Upsample(scale_factor=tuple(stride), mode="nearest"))
+                up.append(torch.nn.Upsample(scale_factor=tuple(stride), mode="nearest"))
             else:
                 do.insert(0, ConvNd(in_channels + cond_channels, hid_channels[i], **conv_kwargs))
                 up.append(ConvNd(hid_channels[i], out_channels, **conv_kwargs))
