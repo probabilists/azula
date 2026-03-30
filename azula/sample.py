@@ -29,6 +29,7 @@ __all__ = [
     "DDIMSampler",
     "EulerSampler",
     "HeunSampler",
+    "ItoSampler",
     "zABSampler",
     "vABSampler",
     "zEABSampler",
@@ -178,11 +179,11 @@ class Sampler(abc.ABC):
 class DDPMSampler(Sampler):
     r"""Creates an DDPM sampler.
 
-    .. math:: x_s \gets \alpha_s \mu_\phi(x_t)
-        + \sigma_s \, \sqrt{1 - \tau} \, \frac{x_t - \alpha_t \mu_\phi(x_t)}{\sigma_t}
-        + \sigma_s \, \sqrt{\tau} \, \epsilon
+    .. math:: x_s \gets \alpha_s \mathbb{E}[X \mid x_t]
+        + \sigma_s \, \sqrt{1 - \tau} \, \frac{x_t - \alpha_t \mathbb{E}[X \mid x_t]}{\sigma_t}
+        + \sigma_s \, \sqrt{\tau} \, \varepsilon
 
-    where :math:`\epsilon \sim \mathcal{N}(0, I)` and
+    where :math:`\varepsilon \sim \mathcal{N}(0, I)` and
 
     .. math:: \tau = 1 - \frac{\alpha_t^2}{\alpha_s^2} \frac{\sigma_s^2}{\sigma_t^2} \, .
 
@@ -205,13 +206,12 @@ class DDPMSampler(Sampler):
         alpha_t, sigma_t = self.denoiser.schedule(t)
 
         tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
-        eps = torch.randn_like(x_t)
 
         q_t = self.denoiser(x_t, t, **kwargs)
 
         x_s = alpha_s * q_t.mean
         x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q_t.mean)
-        x_s = x_s + sigma_s * torch.sqrt(tau) * eps
+        x_s = x_s + sigma_s * torch.sqrt(tau) * torch.randn_like(x_t)
 
         return x_s
 
@@ -219,11 +219,11 @@ class DDPMSampler(Sampler):
 class DDIMSampler(Sampler):
     r"""Creates a DDIM sampler.
 
-    .. math:: x_s \gets \alpha_s \mu_\phi(x_t)
-        + \sigma_s \, \sqrt{1 - \eta \, \tau} \, \frac{x_t - \alpha_t \mu_\phi(x_t)}{\sigma_t}
-        + \sigma_s \, \sqrt{\eta \, \tau} \, \epsilon
+    .. math:: x_s \gets \alpha_s \mathbb{E}[X \mid x_t]
+        + \sigma_s \, \sqrt{1 - \eta \, \tau} \, \frac{x_t - \alpha_t \mathbb{E}[X \mid x_t]}{\sigma_t}
+        + \sigma_s \, \sqrt{\eta \, \tau} \, \varepsilon
 
-    where :math:`\epsilon \sim \mathcal{N}(0, I)` and
+    where :math:`\varepsilon \sim \mathcal{N}(0, I)` and
 
     .. math:: \tau = 1 - \frac{\alpha_t^2}{\alpha_s^2} \frac{\sigma_s^2}{\sigma_t^2} \, .
 
@@ -233,7 +233,7 @@ class DDIMSampler(Sampler):
 
     Arguments:
         denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
-        eta: The stochasticity hyperparameter :math:`\eta \in \mathbb{R}_+`.
+        eta: The stochasticity parameter :math:`\eta \in \mathbb{R}_+`.
             If :math:`\eta = 1`, :class:`DDIMSampler` is equivalent to :class:`DDPMSampler`.
             If :math:`\eta = 0`, :class:`DDIMSampler` is equivalent to :class:`EulerSampler`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
@@ -251,13 +251,12 @@ class DDIMSampler(Sampler):
 
         tau = 1 - (alpha_t / alpha_s * sigma_s / sigma_t) ** 2
         tau = torch.clip(self.eta * tau, min=0, max=1)
-        eps = torch.randn_like(x_t)
 
         q_t = self.denoiser(x_t, t, **kwargs)
 
         x_s = alpha_s * q_t.mean
         x_s = x_s + sigma_s * torch.sqrt(1 - tau) / sigma_t * (x_t - alpha_t * q_t.mean)
-        x_s = x_s + sigma_s * torch.sqrt(tau) * eps
+        x_s = x_s + sigma_s * torch.sqrt(tau) * torch.randn_like(x_t)
 
         return x_s
 
@@ -349,6 +348,85 @@ class HeunSampler(Sampler):
         z_s = (x_s - alpha_s * q_s.mean) / sigma_s
         z_t = (z_t + z_s) / 2
         x_s = alpha_s / alpha_t * x_t + alpha_s * (sigma_s / alpha_s - sigma_t / alpha_t) * z_t
+
+        return x_s
+
+
+class ItoSampler(Sampler):
+    r"""Creates an Itô SDE sampler.
+
+    Let's consider the Itô SDE
+
+    .. math:: dx_t = \left[ f_t \, x_t - \frac{1 + \eta^2}{2 \tau} g_t^2 \, \nabla_{x_t} \log p(x_t) \right] dt + \eta \, g_t \, dw_t
+
+    where :math:`\eta \geq 0` controls stochasticity, :math:`\tau \geq 0` controls
+    temperature, and
+
+    .. math::
+        f_t & = \partial_t \log \alpha_t \\
+        g_t^2 & = \alpha_t^2 \, \partial_t \frac{\sigma_t^2}{\alpha_t^2} \, .
+
+    The integral form of this semi-linear Itô SDE is
+
+    .. math:: x_s = \Psi(t, s) \, x_t
+        + \frac{1 + \eta^2}{2} \int_t^s \Psi(u, s) \, g_u^2 \, \nabla_{x_u} \log p(x_u) \, du
+        + \eta \int_t^s \Psi(u, s) \, g_u \, dw_u
+
+    where
+
+    .. math:: \Psi(t, s) = \exp \left( \int_t^s f_u \, du \right) = \frac{\alpha_s}{\alpha_t} \, .
+
+    By Tweedie's formula, we have
+
+    .. math:: \int_t^s \Psi(u, s) \, g_u^2 \, \nabla_{x_u} \log p(x_u) \, du
+        & = \int_t^s \Psi(u, s) \, g_u^2 \frac{\alpha_u \mathbb{E}[x_0 | x_u] - x_u}{\sigma_u^2} du \\
+        & = 2 \alpha_s \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} \frac{\alpha_u \mathbb{E}[x_0 | x_u] - x_u}{\sigma_u} du \\
+        & \approx 2 \alpha_s \frac{\alpha_t \mathbb{E}[x_0 | x_t] - x_t}{\sigma_t} \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} du \\
+        & \approx 2 \left( \frac{\sigma_s}{\sigma_t} - \frac{\alpha_s}{\alpha_t} \right) (\alpha_t \mathbb{E}[x_0 | x_t] - x_t) \, .
+
+    Finally, by Itô isometry, we have
+
+    .. math:: \int_t^s \Psi(u, s) \, g_u \, dw_u
+        & = \int_s^t \Psi(u, s) \, g_u \, dw_u \\
+        & = \varepsilon \, \sqrt{\int_s^t \Psi(u, s)^2 \, g_u^2 \, du} \\
+        & = \varepsilon \, \sqrt{\int_s^t \alpha_s^2 \, \partial_u \frac{\sigma_u^2}{\alpha_u^2} du} \\
+        & = \varepsilon \, \alpha_s \sqrt{\frac{\sigma_t^2}{\alpha_t^2} - \frac{\sigma_s^2}{\alpha_s^2}}
+
+    where :math:`\varepsilon \sim \mathcal{N}(0, 1)`.
+
+    Arguments:
+        denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
+        eta: The stochasticity parameter :math:`\eta \geq 0`.
+        temperature: The temperature parameter :math:`\tau \geq 0`.
+        kwargs: Keyword arguments passed to :class:`Sampler`.
+    """
+
+    def __init__(
+        self,
+        denoiser: Denoiser,
+        eta: float = 1.0,
+        temperature: float = 1.0,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+
+        self.denoiser = denoiser
+        self.eta = eta
+        self.temperature = temperature
+
+    def step(self, x_t: Tensor, t: Tensor, s: Tensor, **kwargs) -> Tensor:
+        alpha_s, sigma_s = self.denoiser.schedule(s)
+        alpha_t, sigma_t = self.denoiser.schedule(t)
+
+        q_t = self.denoiser(x_t, t, **kwargs)
+
+        x_s = alpha_s / alpha_t * x_t
+        x_s = x_s + (1 + self.eta**2) / self.temperature * (
+            sigma_s / sigma_t - alpha_s / alpha_t
+        ) * (x_t - alpha_t * q_t.mean)
+        x_s = x_s + self.eta * alpha_s * torch.sqrt(
+            torch.abs((sigma_t / alpha_t) ** 2 - (sigma_s / alpha_s) ** 2)
+        ) * torch.randn_like(x_s)
 
         return x_s
 
