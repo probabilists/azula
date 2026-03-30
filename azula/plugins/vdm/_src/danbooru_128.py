@@ -3,7 +3,7 @@ import torch
 
 from torch import nn
 
-from .. import utils
+from . import utils
 
 
 class ResidualBlock(nn.Module):
