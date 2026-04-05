@@ -48,18 +48,27 @@ class Covariance(abc.ABC):
     def inv(self) -> Covariance:
         pass
 
-    def to(self, **kwargs) -> Covariance:
+    @abc.abstractmethod
+    def solve(self, x: Tensor) -> Tensor:
+        pass
+
+    def to(self, *args, **kwargs) -> Covariance:
         new = object.__new__(type(self))
 
         for k, v in self.__dict__.items():
             if hasattr(v, "to"):
-                new.__dict__[k] = v.to(**kwargs)
+                new.__dict__[k] = v.to(*args, **kwargs)
             elif isinstance(v, list | tuple):
-                new.__dict__[k] = type(v)(w.to(**kwargs) if hasattr(w, "to") else w for w in v)
+                new.__dict__[k] = type(v)(
+                    w.to(*args, **kwargs) if hasattr(w, "to") else w for w in v
+                )
             else:
                 new.__dict__[k] = v
 
         return new
+
+    def is_floating_point(self) -> bool:  # used by `nn.Module.to(dtype)`
+        return True
 
 
 class IsotropicCovariance(Covariance):
@@ -96,6 +105,9 @@ class IsotropicCovariance(Covariance):
     @property
     def inv(self) -> IsotropicCovariance:
         return IsotropicCovariance(1 / self.lmbda)
+
+    def solve(self, x: Tensor) -> Tensor:
+        return x / self.lmbda
 
 
 class DiagonalCovariance(Covariance):
@@ -137,6 +149,9 @@ class DiagonalCovariance(Covariance):
     def inv(self) -> DiagonalCovariance:
         return DiagonalCovariance(1 / self.D)
 
+    def solve(self, x: Tensor) -> Tensor:
+        return x / self.D
+
 
 class FullCovariance(Covariance):
     r"""Full covariance matrix.
@@ -176,14 +191,17 @@ class FullCovariance(Covariance):
 
     def __matmul__(self, x: Tensor) -> Tensor:
         X = x.reshape(-1, self.C.shape[0])
-
         X = torch.einsum("ij,...j->...i", self.C, X)
-
         return X.reshape_as(x)
 
     @property
     def inv(self) -> FullCovariance:
         return FullCovariance(torch.linalg.inv(self.C))
+
+    def solve(self, x: Tensor) -> Tensor:
+        X = x.reshape(-1, self.C.shape[0], 1)
+        X = torch.linalg.solve(self.C, X)
+        return X.reshape_as(x)
 
 
 class DPLRCovariance(Covariance):
@@ -264,11 +282,9 @@ class DPLRCovariance(Covariance):
 
     def __matmul__(self, x: Tensor) -> Tensor:
         X = x.reshape(-1, *self.D.shape)
-
         X = self.D * X + torch.einsum(
             "i...,i,ni->n...", self.V, self.S, torch.einsum("i...,n...->ni", self.V, X)
         )
-
         return X.reshape_as(x)
 
     @property
@@ -289,6 +305,9 @@ class DPLRCovariance(Covariance):
         S = -1 / L
 
         return DPLRCovariance(D, V, S)
+
+    def solve(self, x: Tensor) -> Tensor:
+        return self.inv(x)
 
 
 class KroneckerCovariance(Covariance):
@@ -363,3 +382,16 @@ class KroneckerCovariance(Covariance):
     @property
     def inv(self) -> KroneckerCovariance:
         return KroneckerCovariance(self.C.inv, self.Qs)
+
+    def solve(self, x: Tensor) -> Tensor:
+        X = x.reshape(-1, *(Q.shape[0] for Q in self.Qs))
+
+        for Q in self.Qs:
+            X = torch.tensordot(X, Q, dims=[[1], [0]])
+
+        X = self.C.solve(X)
+
+        for Q in self.Qs:
+            X = torch.tensordot(X, Q, dims=[[1], [1]])
+
+        return X.reshape_as(x)

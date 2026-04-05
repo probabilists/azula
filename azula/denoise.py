@@ -167,7 +167,7 @@ class GaussianDenoiser(Denoiser):
         alpha_t, sigma_t = self.schedule(t)
 
         cov_t = IsotropicCovariance((sigma_t / alpha_t) ** 2)
-        cov_inv = (self.cov + cov_t).inv
+        cov_inv = (self.cov + cov_t).solve
 
         mean = self.mean + self.cov(cov_inv(x_t / alpha_t - self.mean))
 
@@ -198,7 +198,7 @@ class SimpleDenoiser(Denoiser):
         self.backbone = backbone
         self.schedule = schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> GaussianPosterior:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.
