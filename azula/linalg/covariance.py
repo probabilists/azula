@@ -13,6 +13,7 @@ __all__ = [
 
 import abc
 import math
+import string
 import torch
 
 from collections.abc import Sequence
@@ -48,24 +49,33 @@ class Covariance(abc.ABC):
     def inv(self) -> Covariance:
         pass
 
-    def to(self, **kwargs) -> Covariance:
+    @abc.abstractmethod
+    def logdet(self) -> Tensor:
+        pass
+
+    def to(self, *args, **kwargs) -> Covariance:
         new = object.__new__(type(self))
 
         for k, v in self.__dict__.items():
             if hasattr(v, "to"):
-                new.__dict__[k] = v.to(**kwargs)
+                new.__dict__[k] = v.to(*args, **kwargs)
             elif isinstance(v, list | tuple):
-                new.__dict__[k] = type(v)(w.to(**kwargs) if hasattr(w, "to") else w for w in v)
+                new.__dict__[k] = type(v)(
+                    w.to(*args, **kwargs) if hasattr(w, "to") else w for w in v
+                )
             else:
                 new.__dict__[k] = v
 
         return new
 
+    def is_floating_point(self) -> bool:  # used by `nn.Module.to(dtype)`
+        return True
+
 
 class IsotropicCovariance(Covariance):
     r"""Isotropic covariance matrix.
 
-    .. math:: \lambda I
+    .. math:: C = \lambda I
     """
 
     lmbda: Tensor
@@ -97,11 +107,14 @@ class IsotropicCovariance(Covariance):
     def inv(self) -> IsotropicCovariance:
         return IsotropicCovariance(1 / self.lmbda)
 
+    def logdet(self) -> Tensor:
+        return torch.log(self.lmbda)
+
 
 class DiagonalCovariance(Covariance):
     r"""Diagonal covariance matrix.
 
-    .. math:: \mathrm{diag}(D)
+    .. math:: C = \mathrm{diag}(D)
     """
 
     D: Tensor
@@ -137,59 +150,75 @@ class DiagonalCovariance(Covariance):
     def inv(self) -> DiagonalCovariance:
         return DiagonalCovariance(1 / self.D)
 
+    def logdet(self) -> Tensor:
+        return torch.log(self.D).sum()
+
 
 class FullCovariance(Covariance):
     r"""Full covariance matrix.
 
-    .. math:: C
+    .. math:: C = Q \mathrm{diag}(L) Q^\top
+
+    where :math:`Q` is an orthonormal matrix.
     """
 
-    C: Tensor
+    Q: Tensor
+    L: Tensor
 
-    def __init__(self, C: Tensor) -> None:
-        self.C = C
+    def __init__(self, Q: Tensor, L: Tensor) -> None:
+        self.Q = Q
+        self.L = L
 
     @classmethod
     @torch.no_grad()
     def from_data(self, X: Tensor) -> FullCovariance:
-        samples, *_ = X.shape
+        samples, *shape = X.shape
+        features = math.prod(shape)
 
-        C = torch.cov(X.reshape(samples, -1).T)
+        assert features < samples
 
-        return FullCovariance(C)
+        X = X.flatten(1)
+
+        C = torch.cov(X.T)
+        L, Q = torch.linalg.eigh(C)
+
+        return FullCovariance(Q.reshape(*shape, *shape), L.reshape(shape))
 
     def __add__(self, other: Covariance) -> FullCovariance:
-        I = torch.eye(*self.C.shape, dtype=self.C.dtype, device=self.C.device)
-
         if isinstance(other, IsotropicCovariance):
-            return FullCovariance(self.C + other.lmbda * I)
-        elif isinstance(other, DiagonalCovariance):
-            return FullCovariance(self.C + torch.diag_embed(other.D.flatten()))
+            return FullCovariance(self.Q, self.L + other.lmbda)
         else:
             return NotImplemented
 
     def __mul__(self, other: Covariance) -> FullCovariance:
         if isinstance(other, IsotropicCovariance):
-            return FullCovariance(self.C * other.lmbda)
+            return FullCovariance(self.Q, self.L * other.lmbda)
         else:
             return NotImplemented
 
     def __matmul__(self, x: Tensor) -> Tensor:
-        X = x.reshape(-1, self.C.shape[0])
+        X = x.reshape(-1, *self.L.shape)
 
-        X = torch.einsum("ij,...j->...i", self.C, X)
+        abc = string.ascii_lowercase[: self.L.ndim]
+
+        X = torch.einsum(f"...{abc},{abc}{abc.upper()}", X, self.Q)
+        X = self.L * X
+        X = torch.einsum(f"...{abc},{abc.upper()}{abc}", X, self.Q)
 
         return X.reshape_as(x)
 
     @property
     def inv(self) -> FullCovariance:
-        return FullCovariance(torch.linalg.inv(self.C))
+        return FullCovariance(self.Q, 1 / self.L)
+
+    def logdet(self) -> Tensor:
+        return torch.log(self.L).sum()
 
 
 class DPLRCovariance(Covariance):
     r"""Diagonal plus low-rank (DPLR) covariance matrix.
 
-    .. math:: \mathrm{diag}(D) + V \Sigma V^\top
+    .. math:: \mathrm{diag}(D) + V \mathrm{diag}(S) V^\top
 
     Wikipedia:
         https://wikipedia.org/wiki/Low-rank_approximation
@@ -210,8 +239,16 @@ class DPLRCovariance(Covariance):
     @classmethod
     @torch.no_grad()
     def from_data(self, X: Tensor, rank: int = 1) -> DPLRCovariance:
+        """
+        References:
+            | Mixtures of probabilistic principal component analysers (Tipping and Bishop, 1999)
+            | https://www.miketipping.com/abstracts.htm#Tipping:NC98
+        """
+
         samples, *shape = X.shape
         features = math.prod(shape)
+
+        assert rank < min(features, samples)
 
         X = X.flatten(1)
         X = X - X.mean(dim=0)
@@ -227,17 +264,13 @@ class DPLRCovariance(Covariance):
             L, Q = torch.linalg.eigh(C)
             L, Q = L[-rank:], Q[:, -rank:]
 
-        if rank < features:
-            D = (torch.trace(C) - torch.sum(L)) / (features - rank)
-        else:
-            D = torch.tensor(1e-6).to(C)
-
         if samples < features:
             V = torch.einsum("ij,ik->kj", X, Q)
             V = V / torch.linalg.norm(V, dim=1, keepdim=True)
         else:
             V = Q.T
 
+        D = torch.clip(torch.trace(C) - torch.sum(L), min=0.0) / (features - rank)
         S = torch.clip(L - D, min=0.0)
 
         return DPLRCovariance(D.expand(shape), V.reshape(-1, *shape), S)
@@ -264,11 +297,9 @@ class DPLRCovariance(Covariance):
 
     def __matmul__(self, x: Tensor) -> Tensor:
         X = x.reshape(-1, *self.D.shape)
-
         X = self.D * X + torch.einsum(
             "i...,i,ni->n...", self.V, self.S, torch.einsum("i...,n...->ni", self.V, X)
         )
-
         return X.reshape_as(x)
 
     @property
@@ -276,7 +307,7 @@ class DPLRCovariance(Covariance):
         return self.V.shape[0]
 
     @property
-    def C(self) -> Tensor:  # capacitance
+    def K(self) -> Tensor:  # capacitance
         return torch.diag(1 / self.S) + torch.einsum(
             "i...,...,j...->ij", self.V, 1 / self.D, self.V
         )
@@ -284,17 +315,24 @@ class DPLRCovariance(Covariance):
     @property
     def inv(self) -> DPLRCovariance:
         D = 1 / self.D
-        L, Q = torch.linalg.eigh(self.C)
+        L, Q = torch.linalg.eigh(self.K)
         V = torch.einsum("...,i...,ij->j...", D, self.V, Q)
         S = -1 / L
 
         return DPLRCovariance(D, V, S)
 
+    def logdet(self) -> Tensor:  # TODO: add tests
+        return (
+            torch.log(self.D).sum()
+            + torch.log(torch.abs(self.S)).sum()
+            + torch.linalg.slogdet(self.K).logabsdet
+        )
+
 
 class KroneckerCovariance(Covariance):
     r"""Kronecker-factorized covariance matrix.
 
-    .. math:: (Q_1 \otimes \dots \otimes Q_n) \, C \, (Q_1 \otimes \dots \otimes Q_n)^\top
+    .. math:: C = (Q_1 \otimes \dots \otimes Q_n) \, L \, (Q_1 \otimes \dots \otimes Q_n)^\top
 
     where :math:`Q_i` are orthonormal matrices for each dimension and :math:`\otimes` denotes the Kronecker product.
 
@@ -302,12 +340,12 @@ class KroneckerCovariance(Covariance):
         https://wikipedia.org/wiki/Kronecker_product
     """
 
-    C: Covariance
     Qs: Sequence[Tensor]
+    L: Covariance
 
-    def __init__(self, C: Covariance, Qs: Sequence[Tensor]) -> None:
-        self.C = C
+    def __init__(self, Qs: Sequence[Tensor], L: Covariance) -> None:
         self.Qs = tuple(Qs)
+        self.L = L
 
     @classmethod
     @torch.no_grad()
@@ -319,47 +357,43 @@ class KroneckerCovariance(Covariance):
             _, Qi = torch.linalg.eigh(Ci)
             Qs.append(Qi)
 
-        for Q in Qs:
-            X = torch.tensordot(X, Q, dims=[[1], [0]])
+        abc = string.ascii_lowercase[: len(Qs)]
+
+        X = torch.einsum(f"...{abc}," + ",".join(f"{i}{i.upper()}" for i in abc), X, *Qs)
 
         if rank > 0:
-            C = DPLRCovariance.from_data(X, rank=rank)
+            L = DPLRCovariance.from_data(X, rank=rank)
         else:
-            C = DiagonalCovariance.from_data(X)
+            L = DiagonalCovariance.from_data(X)
 
-        return KroneckerCovariance(C, Qs)
+        return KroneckerCovariance(Qs, L)
 
     def __add__(self, other: Covariance) -> KroneckerCovariance:
         if isinstance(other, IsotropicCovariance):
-            return KroneckerCovariance(self.C + other, self.Qs)
-        elif isinstance(other, KroneckerCovariance):
-            assert all(Q1 is Q2 for Q1, Q2 in zip(self.Qs, other.Qs, strict=True))
-            return KroneckerCovariance(
-                self.C + other.C,
-                self.Qs,
-            )
+            return KroneckerCovariance(self.Qs, self.L + other)
         else:
             return NotImplemented
 
     def __mul__(self, other: Covariance) -> KroneckerCovariance:
         if isinstance(other, IsotropicCovariance):
-            return KroneckerCovariance(self.C * other, self.Qs)
+            return KroneckerCovariance(self.Qs, self.L * other)
         else:
             return NotImplemented
 
     def __matmul__(self, x: Tensor) -> Tensor:
         X = x.reshape(-1, *(Q.shape[0] for Q in self.Qs))
 
-        for Q in self.Qs:
-            X = torch.tensordot(X, Q, dims=[[1], [0]])
+        abc = string.ascii_lowercase[: len(self.Qs)]
 
-        X = self.C @ X
-
-        for Q in self.Qs:
-            X = torch.tensordot(X, Q, dims=[[1], [1]])
+        X = torch.einsum(f"...{abc}," + ",".join(f"{i}{i.upper()}" for i in abc), X, *self.Qs)
+        X = self.L @ X
+        X = torch.einsum(f"...{abc}," + ",".join(f"{i.upper()}{i}" for i in abc), X, *self.Qs)
 
         return X.reshape_as(x)
 
     @property
     def inv(self) -> KroneckerCovariance:
-        return KroneckerCovariance(self.C.inv, self.Qs)
+        return KroneckerCovariance(self.Qs, self.L.inv)
+
+    def logdet(self) -> Tensor:
+        return self.L.logdet()

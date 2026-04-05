@@ -198,7 +198,7 @@ class SimpleDenoiser(Denoiser):
         self.backbone = backbone
         self.schedule = schedule
 
-    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> GaussianPosterior:
+    def forward(self, x_t: Tensor, t: Tensor, **kwargs) -> DiracPosterior:
         r"""
         Arguments:
             x_t: A noisy tensor :math:`x_t`, with shape :math:`(B, *)`.

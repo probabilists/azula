@@ -36,16 +36,26 @@ def torch_float64() -> Iterator[None]:
 )
 @pytest.mark.parametrize("shape", [(5,), (3, 5)])
 @pytest.mark.parametrize("batch", [(), (256,), (16, 16)])
-def test_covariances(covariance_cls: type, shape: Sequence[int], batch: Sequence[int]) -> None:
+@pytest.mark.parametrize("rank", [2])
+def test_covariances(
+    covariance_cls: type,
+    shape: Sequence[int],
+    batch: Sequence[int],
+    rank: int,
+) -> None:
     X = torch.randn(1024, *shape)
 
-    cov = covariance_cls.from_data(X)
-    cov_inv = cov.inv
+    try:
+        cov = covariance_cls.from_data(X, rank=rank)
+    except TypeError:
+        cov = covariance_cls.from_data(X)
 
     x = torch.randn(*batch, *shape)
 
     assert x.shape == cov(x).shape
-    assert x.shape == cov_inv(x).shape
+    assert x.shape == cov.inv(x).shape
 
-    assert torch.allclose(x, cov_inv(cov(x)))
-    assert torch.allclose(x, cov(cov_inv(x)))
+    assert torch.allclose(x, cov.inv(cov(x)))
+    assert torch.allclose(x, cov(cov.inv(x)))
+
+    assert torch.allclose(cov.logdet(), -cov.inv.logdet())
