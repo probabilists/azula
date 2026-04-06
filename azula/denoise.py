@@ -166,10 +166,10 @@ class GaussianDenoiser(Denoiser):
 
         alpha_t, sigma_t = self.schedule(t)
 
-        cov_t = IsotropicCovariance((sigma_t / alpha_t) ** 2)
-        cov_inv = (self.cov + cov_t).inv
+        mean_t = alpha_t * self.mean
+        cov_t = IsotropicCovariance(alpha_t**2) * self.cov + IsotropicCovariance(sigma_t**2)
 
-        mean = self.mean + self.cov(cov_inv(x_t / alpha_t - self.mean))
+        mean = (x_t + sigma_t**2 * cov_t.inv(mean_t - x_t)) / alpha_t
 
         return DiracPosterior(mean=mean)
 
