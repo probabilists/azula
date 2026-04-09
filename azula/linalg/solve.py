@@ -46,7 +46,7 @@ def cg(
     if dtype is None:
         dtype = torch.float64
 
-    epsilon = torch.finfo(dtype).smallest_normal
+    epsilon = torch.finfo(dtype).eps
 
     if x0 is None:
         x = torch.zeros_like(b)
@@ -109,7 +109,7 @@ def gmres(
     if dtype is None:
         dtype = torch.float64
 
-    epsilon = torch.finfo(dtype).smallest_normal
+    epsilon = torch.finfo(dtype).eps
 
     if x0 is None:
         r = b

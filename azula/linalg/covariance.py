@@ -8,6 +8,7 @@ __all__ = [
     "DiagonalCovariance",
     "FullCovariance",
     "DPLRCovariance",
+    "DMLRCovariance",
     "KroneckerCovariance",
 ]
 
@@ -22,6 +23,11 @@ from torch import Tensor
 
 class Covariance(abc.ABC):
     r"""Abstract covariance matrix."""
+
+    @property
+    @abc.abstractmethod
+    def shape(self) -> Sequence[int]:
+        pass
 
     @abc.abstractmethod
     def __add__(self, other: Covariance) -> Covariance:
@@ -43,6 +49,10 @@ class Covariance(abc.ABC):
 
     def __call__(self, x: Tensor) -> Tensor:
         return self.__matmul__(x)
+
+    @abc.abstractmethod
+    def color(self, x: Tensor) -> Tensor:
+        pass
 
     @property
     @abc.abstractmethod
@@ -83,10 +93,14 @@ class IsotropicCovariance(Covariance):
     def __init__(self, lmbda: Tensor) -> None:
         self.lmbda = lmbda.reshape(())
 
-    @classmethod
+    @property
+    def shape(self) -> Sequence[int]:
+        raise NotImplementedError("IsotropicCovariance's shape is ambiguous.")
+
+    @staticmethod
     @torch.no_grad()
-    def from_data(self, X: Tensor) -> IsotropicCovariance:
-        return IsotropicCovariance(X.var())
+    def from_data(X: Tensor) -> IsotropicCovariance:
+        return IsotropicCovariance(torch.var(X))
 
     def __add__(self, other: Covariance) -> IsotropicCovariance:
         if isinstance(other, IsotropicCovariance):
@@ -103,12 +117,15 @@ class IsotropicCovariance(Covariance):
     def __matmul__(self, x: Tensor) -> Tensor:
         return self.lmbda * x
 
+    def color(self, x: Tensor) -> Tensor:
+        return torch.sqrt(self.lmbda) * x
+
     @property
     def inv(self) -> IsotropicCovariance:
-        return IsotropicCovariance(1 / self.lmbda)
+        return IsotropicCovariance(torch.reciprocal(self.lmbda))
 
     def logdet(self) -> Tensor:
-        return torch.log(self.lmbda)
+        raise NotImplementedError("IsotropicCovariance's log determinant is ambiguous.")
 
 
 class DiagonalCovariance(Covariance):
@@ -122,10 +139,14 @@ class DiagonalCovariance(Covariance):
     def __init__(self, D: Tensor) -> None:
         self.D = D
 
-    @classmethod
+    @property
+    def shape(self) -> Sequence[int]:
+        return self.D.shape
+
+    @staticmethod
     @torch.no_grad()
-    def from_data(self, X: Tensor) -> DiagonalCovariance:
-        return DiagonalCovariance(X.var(dim=0))
+    def from_data(X: Tensor) -> DiagonalCovariance:
+        return DiagonalCovariance(torch.var(X, dim=0))
 
     def __add__(self, other: Covariance) -> DiagonalCovariance:
         if isinstance(other, IsotropicCovariance):
@@ -144,11 +165,18 @@ class DiagonalCovariance(Covariance):
             return NotImplemented
 
     def __matmul__(self, x: Tensor) -> Tensor:
-        return self.D * x
+        y = x.reshape(-1, *self.shape)
+        y = self.D * y
+        return y.reshape_as(x)
+
+    def color(self, x: Tensor) -> Tensor:
+        y = x.reshape(-1, *self.shape)
+        y = torch.sqrt(self.D) * y
+        return y.reshape_as(x)
 
     @property
     def inv(self) -> DiagonalCovariance:
-        return DiagonalCovariance(1 / self.D)
+        return DiagonalCovariance(torch.reciprocal(self.D))
 
     def logdet(self) -> Tensor:
         return torch.log(self.D).sum()
@@ -166,12 +194,15 @@ class FullCovariance(Covariance):
     L: Tensor
 
     def __init__(self, Q: Tensor, L: Tensor) -> None:
-        self.Q = Q
-        self.L = L
+        self.Q, self.L = Q, L
 
-    @classmethod
+    @property
+    def shape(self) -> Sequence[int]:
+        return self.Q.shape[:-1]
+
+    @staticmethod
     @torch.no_grad()
-    def from_data(self, X: Tensor) -> FullCovariance:
+    def from_data(X: Tensor) -> FullCovariance:
         samples, *shape = X.shape
         features = math.prod(shape)
 
@@ -179,10 +210,10 @@ class FullCovariance(Covariance):
 
         X = X.flatten(1)
 
-        C = torch.cov(X.T)
+        C = torch.cov(X.T).reshape(features, features)
         L, Q = torch.linalg.eigh(C)
 
-        return FullCovariance(Q.reshape(*shape, *shape), L.reshape(shape))
+        return FullCovariance(Q.reshape(*shape, features), L)
 
     def __add__(self, other: Covariance) -> FullCovariance:
         if isinstance(other, IsotropicCovariance):
@@ -197,19 +228,21 @@ class FullCovariance(Covariance):
             return NotImplemented
 
     def __matmul__(self, x: Tensor) -> Tensor:
-        X = x.reshape(-1, *self.L.shape)
+        y = x.reshape(-1, *self.shape)
+        y = torch.einsum("...i,n...->ni", self.Q, y)
+        y = self.L * y
+        y = torch.einsum("...i,ni->n...", self.Q, y)
+        return y.reshape_as(x)
 
-        abc = string.ascii_lowercase[: self.L.ndim]
-
-        X = torch.einsum(f"...{abc},{abc}{abc.upper()}", X, self.Q)
-        X = self.L * X
-        X = torch.einsum(f"...{abc},{abc.upper()}{abc}", X, self.Q)
-
-        return X.reshape_as(x)
+    def color(self, x: Tensor) -> Tensor:
+        y = x.reshape(-1, self.Q.shape[-1])
+        y = torch.sqrt(self.L) * y
+        y = torch.einsum("...i,ni->n...", self.Q, y)
+        return y.reshape_as(x)
 
     @property
     def inv(self) -> FullCovariance:
-        return FullCovariance(self.Q, 1 / self.L)
+        return FullCovariance(self.Q, torch.reciprocal(self.L))
 
     def logdet(self) -> Tensor:
         return torch.log(self.L).sum()
@@ -218,7 +251,7 @@ class FullCovariance(Covariance):
 class DPLRCovariance(Covariance):
     r"""Diagonal plus low-rank (DPLR) covariance matrix.
 
-    .. math:: \mathrm{diag}(D) + V \mathrm{diag}(S) V^\top
+    .. math:: \mathrm{diag}(D) + V V^\top
 
     Wikipedia:
         https://wikipedia.org/wiki/Low-rank_approximation
@@ -226,37 +259,40 @@ class DPLRCovariance(Covariance):
 
     D: Tensor
     V: Tensor
-    S: Tensor
 
-    def __init__(self, D: Tensor, V: Tensor, S: Tensor | None = None) -> None:
+    def __init__(self, D: Tensor, V: Tensor) -> None:
         self.D, self.V = D, V
 
-        if S is None:
-            self.S = V.new_ones(self.rank)
-        else:
-            self.S = S
+    @property
+    def shape(self) -> Sequence[int]:
+        return self.D.shape
 
-    @classmethod
+    @property
+    def rank(self) -> int:
+        return self.V.shape[-1]
+
+    @staticmethod
     @torch.no_grad()
-    def from_data(self, X: Tensor, rank: int = 1) -> DPLRCovariance:
+    def from_data(X: Tensor, rank: int = 1, iterations: int = 0) -> DPLRCovariance:
         """
         References:
-            | Mixtures of probabilistic principal component analysers (Tipping and Bishop, 1999)
-            | https://www.miketipping.com/abstracts.htm#Tipping:NC98
+            | The EM Algorithm for Mixtures of Factor Analyzers (Zoubin et al., 1996)
+            | https://mlg.eng.cam.ac.uk/zoubin/papers/tr-96-1.pdf
         """
 
         samples, *shape = X.shape
         features = math.prod(shape)
 
-        assert rank < min(features, samples)
+        assert 0 < rank < min(features, samples)
 
         X = X.flatten(1)
         X = X - X.mean(dim=0)
 
+        # PCA initialization
         if samples < features:
-            C = torch.einsum("ik,jk->ij", X, X) / samples
+            C = torch.einsum("if,jf->ij", X, X) / (samples - 1)
         else:
-            C = torch.einsum("ki,kj->ij", X, X) / samples
+            C = torch.einsum("ni,nj->ij", X, X) / (samples - 1)
 
         if 3 * rank < min(samples, features):
             L, Q = torch.lobpcg(C, k=rank)
@@ -265,68 +301,178 @@ class DPLRCovariance(Covariance):
             L, Q = L[-rank:], Q[:, -rank:]
 
         if samples < features:
-            V = torch.einsum("ij,ik->kj", X, Q)
-            V = V / torch.linalg.norm(V, dim=1, keepdim=True)
-        else:
-            V = Q.T
+            Q = torch.einsum("ni,nj->ij", X, Q)
+            Q = Q / torch.linalg.norm(Q, dim=0, keepdim=True)
 
-        D = torch.clip(torch.trace(C) - torch.sum(L), min=0.0) / (features - rank)
-        S = torch.clip(L - D, min=0.0)
+        V = Q * torch.sqrt(L)
+        D = torch.var(X, dim=0) - torch.einsum("fi,fi->f", V, V)
 
-        return DPLRCovariance(D.expand(shape), V.reshape(-1, *shape), S)
+        # EM iterations for factor analysis
+        for _ in range(iterations):
+            B = DPLRCovariance(D, V).inv(V.T)
+            Ez = torch.einsum("if,nf->ni", B, X)
+            Ezz = (
+                torch.eye(V.shape[-1], dtype=D.dtype, device=D.device)
+                - torch.einsum("if,fj->ij", B, V)
+                + torch.einsum("ni,nj->ij", Ez, Ez) / (samples - 1)
+            )
+            Ezz_inv = torch.cholesky_inverse(torch.linalg.cholesky(Ezz))
+
+            V = torch.einsum("nf,ni,ij->fj", X, Ez, Ezz_inv) / (samples - 1)
+            D = torch.var(X, dim=0) - torch.einsum("fi,ni,nf->f", V, Ez, X) / (samples - 1)
+
+        return DPLRCovariance(D.reshape(shape), V.reshape(*shape, -1))
 
     def __add__(self, other: Covariance) -> DPLRCovariance:
         if isinstance(other, IsotropicCovariance):
-            return DPLRCovariance(self.D + other.lmbda, self.V, self.S)
+            return DPLRCovariance(self.D + other.lmbda, self.V)
         elif isinstance(other, DiagonalCovariance):
-            return DPLRCovariance(self.D + other.D, self.V, self.S)
+            return DPLRCovariance(self.D + other.D, self.V)
         elif isinstance(other, DPLRCovariance):
             return DPLRCovariance(
                 self.D + other.D,
-                torch.cat((self.V, other.V)),
-                torch.cat((self.S, other.S)),
+                torch.cat((self.V, other.V), dim=-1),
             )
         else:
             return NotImplemented
 
-    def __mul__(self, other: Covariance) -> DiagonalCovariance:
+    def __mul__(self, other: Covariance) -> DPLRCovariance:
         if isinstance(other, IsotropicCovariance):
-            return DPLRCovariance(self.D * other.lmbda, self.V, self.S * other.lmbda)
+            return DPLRCovariance(
+                self.D * other.lmbda,
+                self.V * torch.sqrt(other.lmbda),
+            )
         else:
             return NotImplemented
 
     def __matmul__(self, x: Tensor) -> Tensor:
-        X = x.reshape(-1, *self.D.shape)
-        X = self.D * X + torch.einsum(
-            "i...,i,ni->n...", self.V, self.S, torch.einsum("i...,n...->ni", self.V, X)
+        y = x.reshape(-1, *self.shape)
+        y = self.D * y + torch.einsum(
+            "...i,ni->n...", self.V, torch.einsum("...i,n...->ni", self.V, y)
         )
-        return X.reshape_as(x)
+        return y.reshape_as(x)
 
-    @property
-    def rank(self) -> int:
-        return self.V.shape[0]
+    def color(self, x: Tensor) -> Tensor:
+        W = torch.einsum("...,...i->...i", torch.rsqrt(self.D), self.V)
+        L, Q = torch.linalg.eigh(torch.einsum("...i,...j->ij", W, W))
+        U = torch.einsum("...i,ij,j->...j", W, Q, torch.rsqrt(L))
+
+        y = x.reshape(-1, *self.shape)
+        y = y + torch.einsum(
+            "...i,i,ni->n...",
+            U,
+            torch.sqrt(1 + L) - 1,
+            torch.einsum("...i,n...->ni", U, y),
+        )
+        y = torch.sqrt(self.D) * y
+
+        return y.reshape_as(x)
 
     @property
     def K(self) -> Tensor:  # capacitance
-        return torch.diag(1 / self.S) + torch.einsum(
-            "i...,...,j...->ij", self.V, 1 / self.D, self.V
+        return torch.eye(self.rank, dtype=self.D.dtype, device=self.D.device) + torch.einsum(
+            "...i,...,...j->ij",
+            self.V,
+            torch.reciprocal(self.D),
+            self.V,
+        )
+
+    @property
+    def inv(self) -> DMLRCovariance:
+        D = torch.reciprocal(self.D)
+        L, Q = torch.linalg.eigh(self.K)
+        V = torch.einsum("...,...i,ij,j->...j", D, self.V, Q, torch.rsqrt(L))
+
+        return DMLRCovariance(D, V)
+
+    def logdet(self) -> Tensor:
+        return torch.log(self.D).sum() + torch.linalg.slogdet(self.K).logabsdet
+
+
+class DMLRCovariance(Covariance):
+    r"""Diagonal minus low-rank (DMLR) covariance matrix.
+
+    .. math:: \mathrm{diag}(D) - V V^\top
+    """
+
+    D: Tensor
+    V: Tensor
+
+    def __init__(self, D: Tensor, V: Tensor) -> None:
+        self.D, self.V = D, V
+
+    @property
+    def shape(self) -> Sequence[int]:
+        return self.D.shape
+
+    @property
+    def rank(self) -> int:
+        return self.V.shape[-1]
+
+    def __add__(self, other: Covariance) -> DMLRCovariance:
+        if isinstance(other, IsotropicCovariance):
+            return DMLRCovariance(self.D + other.lmbda, self.V)
+        elif isinstance(other, DiagonalCovariance):
+            return DMLRCovariance(self.D + other.D, self.V)
+        elif isinstance(other, DMLRCovariance):
+            return DMLRCovariance(
+                self.D + other.D,
+                torch.cat((self.V, other.V), dim=-1),
+            )
+        else:
+            return NotImplemented
+
+    def __mul__(self, other: Covariance) -> DMLRCovariance:
+        if isinstance(other, IsotropicCovariance):
+            return DMLRCovariance(
+                self.D * other.lmbda,
+                self.V * torch.sqrt(other.lmbda),
+            )
+        else:
+            return NotImplemented
+
+    def __matmul__(self, x: Tensor) -> Tensor:
+        y = x.reshape(-1, *self.shape)
+        y = self.D * y - torch.einsum(
+            "...i,ni->n...", self.V, torch.einsum("...i,n...->ni", self.V, y)
+        )
+        return y.reshape_as(x)
+
+    def color(self, x: Tensor) -> Tensor:
+        W = torch.einsum("...,...i->...i", torch.rsqrt(self.D), self.V)
+        L, Q = torch.linalg.eigh(torch.einsum("...i,...j->ij", W, W))
+        U = torch.einsum("...i,ij,j->...j", W, Q, torch.rsqrt(L))
+
+        y = x.reshape(-1, *self.shape)
+        y = y + torch.einsum(
+            "...i,i,ni->n...",
+            U,
+            torch.sqrt(1 - L) - 1,
+            torch.einsum("...i,n...->ni", U, y),
+        )
+        y = torch.sqrt(self.D) * y
+
+        return y.reshape_as(x)
+
+    @property
+    def K(self) -> Tensor:  # capacitance
+        return torch.eye(self.rank, dtype=self.D.dtype, device=self.D.device) - torch.einsum(
+            "...i,...,...j->ij",
+            self.V,
+            torch.reciprocal(self.D),
+            self.V,
         )
 
     @property
     def inv(self) -> DPLRCovariance:
-        D = 1 / self.D
+        D = torch.reciprocal(self.D)
         L, Q = torch.linalg.eigh(self.K)
-        V = torch.einsum("...,i...,ij->j...", D, self.V, Q)
-        S = -1 / L
+        V = torch.einsum("...,...i,ij,j->...j", D, self.V, Q, torch.rsqrt(L))
 
-        return DPLRCovariance(D, V, S)
+        return DPLRCovariance(D, V)
 
-    def logdet(self) -> Tensor:  # TODO: add tests
-        return (
-            torch.log(self.D).sum()
-            + torch.log(torch.abs(self.S)).sum()
-            + torch.linalg.slogdet(self.K).logabsdet
-        )
+    def logdet(self) -> Tensor:
+        return torch.log(self.D).sum() + torch.linalg.slogdet(self.K).logabsdet
 
 
 class KroneckerCovariance(Covariance):
@@ -347,9 +493,13 @@ class KroneckerCovariance(Covariance):
         self.Qs = tuple(Qs)
         self.L = L
 
-    @classmethod
+    @property
+    def shape(self) -> Sequence[int]:
+        return tuple(Q.shape[0] for Q in self.Qs)
+
+    @staticmethod
     @torch.no_grad()
-    def from_data(self, X: Tensor, rank: int = 0) -> KroneckerCovariance:
+    def from_data(X: Tensor, rank: int = 0, iterations: int = 0) -> KroneckerCovariance:
         Qs = []
 
         for i in range(1, X.ndim):
@@ -361,8 +511,8 @@ class KroneckerCovariance(Covariance):
 
         X = torch.einsum(f"...{abc}," + ",".join(f"{i}{i.upper()}" for i in abc), X, *Qs)
 
-        if rank > 0:
-            L = DPLRCovariance.from_data(X, rank=rank)
+        if rank > 0 and len(Qs) > 1:
+            L = DPLRCovariance.from_data(X, rank=rank, iterations=iterations)
         else:
             L = DiagonalCovariance.from_data(X)
 
@@ -381,15 +531,25 @@ class KroneckerCovariance(Covariance):
             return NotImplemented
 
     def __matmul__(self, x: Tensor) -> Tensor:
-        X = x.reshape(-1, *(Q.shape[0] for Q in self.Qs))
+        y = x.reshape(-1, *self.shape)
 
         abc = string.ascii_lowercase[: len(self.Qs)]
 
-        X = torch.einsum(f"...{abc}," + ",".join(f"{i}{i.upper()}" for i in abc), X, *self.Qs)
-        X = self.L @ X
-        X = torch.einsum(f"...{abc}," + ",".join(f"{i.upper()}{i}" for i in abc), X, *self.Qs)
+        y = torch.einsum(f"...{abc}," + ",".join(f"{i}{i.upper()}" for i in abc), y, *self.Qs)
+        y = self.L @ y
+        y = torch.einsum(f"...{abc}," + ",".join(f"{i.upper()}{i}" for i in abc), y, *self.Qs)
 
-        return X.reshape_as(x)
+        return y.reshape_as(x)
+
+    def color(self, x: Tensor) -> Tensor:
+        y = x.reshape(-1, *self.shape)
+
+        abc = string.ascii_lowercase[: len(self.Qs)]
+
+        y = self.L.color(y)
+        y = torch.einsum(f"...{abc}," + ",".join(f"{i.upper()}{i}" for i in abc), y, *self.Qs)
+
+        return y.reshape_as(x)
 
     @property
     def inv(self) -> KroneckerCovariance:
