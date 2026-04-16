@@ -16,7 +16,7 @@ from functools import partial
 from torch import Tensor
 
 from ..denoise import Denoiser, DiracPosterior
-from ..linalg.covariance import Covariance, DiagonalCovariance
+from ..linalg.covariance import Covariance
 from ..linalg.solve import cg, gmres
 from ..noise import Schedule
 
@@ -28,9 +28,7 @@ class MMPSDenoiser(Denoiser):
         denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         y: An observation :math:`y \sim \mathcal{N}(A(x), \Sigma_y)`, with shape :math:`(*, D)`.
         A: The forward operator :math:`x \mapsto A(x)`.
-        cov_y: The noise covariance :math:`\Sigma_y`. If `cov_y` is a tensor, it is
-            assumed to be the variance :math:`\sigma_y^2` and :math:`\Sigma_y =
-            \mathrm{diag}(\sigma_y^2)`.
+        cov_y: The noise covariance :math:`\Sigma_y`.
         solver: The linear solver name (:py:`"cg"` or :py:`"gmres"`).
         iterations: The number of solver iterations.
     """
@@ -40,7 +38,7 @@ class MMPSDenoiser(Denoiser):
         denoiser: Denoiser,
         y: Tensor,
         A: Callable[[Tensor], Tensor],
-        cov_y: Tensor | Covariance,
+        cov_y: Covariance,
         solver: str = "gmres",
         iterations: int = 1,
     ) -> None:
@@ -50,11 +48,7 @@ class MMPSDenoiser(Denoiser):
 
         self.y = y
         self.A = A
-
-        if isinstance(cov_y, Covariance):
-            self.cov_y = cov_y
-        else:
-            self.cov_y = DiagonalCovariance(cov_y)
+        self.cov_y = cov_y
 
         if solver == "cg":
             self.solve = partial(cg, iterations=iterations)

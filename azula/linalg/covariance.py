@@ -88,10 +88,13 @@ class IsotropicCovariance(Covariance):
     .. math:: C = \lambda I
     """
 
-    lmbda: Tensor
+    lmbda: Tensor | float
 
-    def __init__(self, lmbda: Tensor) -> None:
-        self.lmbda = lmbda.reshape(())
+    def __init__(self, lmbda: Tensor | float) -> None:
+        if torch.is_tensor(lmbda):
+            self.lmbda = lmbda.reshape(())
+        else:
+            self.lmbda = lmbda
 
     @property
     def shape(self) -> Sequence[int]:
@@ -118,11 +121,14 @@ class IsotropicCovariance(Covariance):
         return self.lmbda * x
 
     def color(self, x: Tensor) -> Tensor:
-        return torch.sqrt(self.lmbda) * x
+        if torch.is_tensor(self.lmbda):
+            return torch.sqrt(self.lmbda) * x
+        else:
+            return math.sqrt(self.lmbda) * x
 
     @property
     def inv(self) -> IsotropicCovariance:
-        return IsotropicCovariance(torch.reciprocal(self.lmbda))
+        return IsotropicCovariance(1 / self.lmbda)
 
     def logdet(self) -> Tensor:
         raise NotImplementedError("IsotropicCovariance's log determinant is ambiguous.")
@@ -176,7 +182,7 @@ class DiagonalCovariance(Covariance):
 
     @property
     def inv(self) -> DiagonalCovariance:
-        return DiagonalCovariance(torch.reciprocal(self.D))
+        return DiagonalCovariance(1 / self.D)
 
     def logdet(self) -> Tensor:
         return torch.log(self.D).sum()
@@ -242,7 +248,7 @@ class FullCovariance(Covariance):
 
     @property
     def inv(self) -> FullCovariance:
-        return FullCovariance(self.Q, torch.reciprocal(self.L))
+        return FullCovariance(self.Q, 1 / self.L)
 
     def logdet(self) -> Tensor:
         return torch.log(self.L).sum()
@@ -373,13 +379,13 @@ class DPLRCovariance(Covariance):
         return torch.eye(self.rank, dtype=self.D.dtype, device=self.D.device) + torch.einsum(
             "...i,...,...j->ij",
             self.V,
-            torch.reciprocal(self.D),
+            1 / self.D,
             self.V,
         )
 
     @property
     def inv(self) -> DMLRCovariance:
-        D = torch.reciprocal(self.D)
+        D = 1 / self.D
         L, Q = torch.linalg.eigh(self.K)
         V = torch.einsum("...,...i,ij,j->...j", D, self.V, Q, torch.rsqrt(L))
 
@@ -459,13 +465,13 @@ class DMLRCovariance(Covariance):
         return torch.eye(self.rank, dtype=self.D.dtype, device=self.D.device) - torch.einsum(
             "...i,...,...j->ij",
             self.V,
-            torch.reciprocal(self.D),
+            1 / self.D,
             self.V,
         )
 
     @property
     def inv(self) -> DPLRCovariance:
-        D = torch.reciprocal(self.D)
+        D = 1 / self.D
         L, Q = torch.linalg.eigh(self.K)
         V = torch.einsum("...,...i,ij,j->...j", D, self.V, Q, torch.rsqrt(L))
 
