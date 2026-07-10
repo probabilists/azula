@@ -9,6 +9,10 @@ defines a series of marginal distributions
 
 .. math:: p(X_t) = \int p(X_t \mid x) \, p(x) \, dx \, .
 
+In the following, we sometimes denote the noise added by the perturbation kernel as
+
+.. math:: Z = \frac{X_t - \alpha_t X}{\sigma_t} \sim \mathcal{N}(0, I) \, .
+
 The goal of diffusion models is to generate samples from :math:`p(X_0)`. To this end,
 reverse transition kernels :math:`q(X_s \mid X_t)` from :math:`t` to :math:`s < t` are
 chosen. Then, starting from :math:`x_1 \sim p(X_1)`, :math:`T` transitions
@@ -180,7 +184,7 @@ class DDPMSampler(Sampler):
     r"""Creates an DDPM sampler.
 
     .. math:: x_s \gets \alpha_s \mathbb{E}[X \mid x_t]
-        + \sigma_s \, \sqrt{1 - \tau} \, \frac{x_t - \alpha_t \mathbb{E}[X \mid x_t]}{\sigma_t}
+        + \sigma_s \, \sqrt{1 - \tau} \, \mathbb{E}[Z \mid x_t]
         + \sigma_s \, \sqrt{\tau} \, \varepsilon
 
     where :math:`\varepsilon \sim \mathcal{N}(0, I)` and
@@ -220,7 +224,7 @@ class DDIMSampler(Sampler):
     r"""Creates a DDIM sampler.
 
     .. math:: x_s \gets \alpha_s \mathbb{E}[X \mid x_t]
-        + \sigma_s \, \sqrt{1 - \eta \, \tau} \, \frac{x_t - \alpha_t \mathbb{E}[X \mid x_t]}{\sigma_t}
+        + \sigma_s \, \sqrt{1 - \eta \, \tau} \, \mathbb{E}[Z \mid x_t]
         + \sigma_s \, \sqrt{\eta \, \tau} \, \varepsilon
 
     where :math:`\varepsilon \sim \mathcal{N}(0, I)` and
@@ -264,8 +268,7 @@ class DDIMSampler(Sampler):
 class EulerSampler(Sampler):
     r"""Creates a explicit Euler (1st order) sampler.
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
-    t` such that
+    Let's assume :math:`\alpha_t = 1` and :math:`\sigma_t = t` such that
 
     .. math:: \frac{d x_t}{dt}
         & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
@@ -278,6 +281,11 @@ class EulerSampler(Sampler):
     The explicit Euler step for this integral is
 
     .. math:: x_s \gets x_t + (s - t) \, z(x_t)
+
+    For an arbitrary schedule, this canonical form is obtained with the rescaled state
+    :math:`y_u = x_t / \alpha_t` and the time reparametrization :math:`u = \sigma_t /
+    \alpha_t`. The derivation above reuses :math:`x_t` and :math:`t` in place of
+    :math:`y_u` and :math:`u` for simplicity.
 
     Wikipedia:
         https://wikipedia.org/wiki/Euler_method
@@ -306,8 +314,7 @@ class EulerSampler(Sampler):
 class HeunSampler(Sampler):
     r"""Creates a explicit Heun (2nd order) sampler.
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
-    t` such that
+    Let's assume :math:`\alpha_t = 1` and :math:`\sigma_t = t` such that
 
     .. math:: \frac{d x_t}{dt}
         & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
@@ -322,6 +329,11 @@ class HeunSampler(Sampler):
     .. math::
         x_s & \gets x_t + (s - t) \, z(x_t) \\
         x_s & \gets x_t + (s - t) \frac{z(x_t) + z(x_s)}{2}
+
+    For an arbitrary schedule, this canonical form is obtained with the rescaled state
+    :math:`y_u = x_t / \alpha_t` and the time reparametrization :math:`u = \sigma_t /
+    \alpha_t`. The derivation above reuses :math:`x_t` and :math:`t` in place of
+    :math:`y_u` and :math:`u` for simplicity.
 
     Wikipedia:
         https://wikipedia.org/wiki/Heun%27s_method
@@ -359,7 +371,7 @@ class ItoSampler(Sampler):
 
     .. math:: dx_t = \left[ f_t \, x_t - \frac{1 + \eta^2}{2 \tau} g_t^2 \, \nabla_{x_t} \log p(x_t) \right] dt + \eta \, g_t \, dw_t
 
-    where :math:`\eta \geq 0` controls stochasticity, :math:`\tau \geq 0` controls
+    where :math:`\eta \geq 0` controls stochasticity, :math:`\tau > 0` controls
     temperature, and
 
     .. math::
@@ -369,7 +381,7 @@ class ItoSampler(Sampler):
     The integral form of this semi-linear Itô SDE is
 
     .. math:: x_s = \Psi(t, s) \, x_t
-        + \frac{1 + \eta^2}{2} \int_t^s \Psi(u, s) \, g_u^2 \, \nabla_{x_u} \log p(x_u) \, du
+        - \frac{1 + \eta^2}{2 \tau} \int_t^s \Psi(u, s) \, g_u^2 \, \nabla_{x_u} \log p(x_u) \, du
         + \eta \int_t^s \Psi(u, s) \, g_u \, dw_u
 
     where
@@ -379,10 +391,10 @@ class ItoSampler(Sampler):
     By Tweedie's formula, we have
 
     .. math:: \int_t^s \Psi(u, s) \, g_u^2 \, \nabla_{x_u} \log p(x_u) \, du
-        & = \int_t^s \Psi(u, s) \, g_u^2 \frac{\alpha_u \mathbb{E}[x_0 | x_u] - x_u}{\sigma_u^2} du \\
-        & = 2 \alpha_s \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} \frac{\alpha_u \mathbb{E}[x_0 | x_u] - x_u}{\sigma_u} du \\
-        & \approx 2 \alpha_s \frac{\alpha_t \mathbb{E}[x_0 | x_t] - x_t}{\sigma_t} \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} du \\
-        & \approx 2 \left( \frac{\sigma_s}{\sigma_t} - \frac{\alpha_s}{\alpha_t} \right) (\alpha_t \mathbb{E}[x_0 | x_t] - x_t) \, .
+        & = \int_t^s \Psi(u, s) \, g_u^2 \frac{\alpha_u \mathbb{E}[X \mid x_u] - x_u}{\sigma_u^2} du \\
+        & = 2 \alpha_s \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} \frac{\alpha_u \mathbb{E}[X \mid x_u] - x_u}{\sigma_u} du \\
+        & \approx 2 \alpha_s \frac{\alpha_t \mathbb{E}[X \mid x_t] - x_t}{\sigma_t} \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} du \\
+        & \approx 2 \left( \frac{\sigma_s}{\sigma_t} - \frac{\alpha_s}{\alpha_t} \right) (\alpha_t \mathbb{E}[X \mid x_t] - x_t) \, .
 
     Finally, by Itô isometry, we have
 
@@ -397,14 +409,14 @@ class ItoSampler(Sampler):
     Arguments:
         denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
         eta: The stochasticity parameter :math:`\eta \geq 0`.
-        temperature: The temperature parameter :math:`\tau \geq 0`.
+        temperature: The temperature parameter :math:`\tau > 0`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
 
     def __init__(
         self,
         denoiser: Denoiser,
-        eta: float = 1.0,
+        eta: float = 0.0,
         temperature: float = 1.0,
         **kwargs,
     ) -> None:
@@ -439,8 +451,7 @@ class zABSampler(Sampler):
         (2023) and the linear multi-step (LMS) sampler from Katherine Crowson's
         `k-diffusion <https://github.com/crowsonkb/k-diffusion>`_.
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
-    t` such that
+    Let's assume :math:`\alpha_t = 1` and :math:`\sigma_t = t` such that
 
     .. math:: \frac{d x_t}{dt}
         & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
@@ -455,13 +466,18 @@ class zABSampler(Sampler):
     .. math:: x_s \gets x_t + \sum_{i=1}^{n} z(x_{t_i}) \int_t^s \ell_i(u) \, du
 
     where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
-    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    \sum_{k=0}^{n-1} a_{ik} \, u^k` form their Lagrange basis. The coefficients
     :math:`a_{ik}` are determined by solving the system of linear equations
     :math:`\ell_i(t_j) = \delta_{ij}`. Then, the Adams-Bashforth coefficients are
 
     .. math:: \int_t^s \ell_i(u) \, du
-        & = \sum_{k=1}^{n} a_{ik} \int_t^s u^k \, du \\
-        & = \sum_{k=1}^{n} a_{ik} \left[ \frac{u^{k+1}}{k+1} \right]_t^s
+        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s u^k \, du \\
+        & = \sum_{k=0}^{n-1} a_{ik} \left[ \frac{u^{k+1}}{k+1} \right]_t^s
+
+    For an arbitrary schedule, this canonical form is obtained with the rescaled state
+    :math:`y_u = x_t / \alpha_t` and the time reparametrization :math:`u = \sigma_t /
+    \alpha_t`. The derivation above reuses :math:`x_t` and :math:`t` in place of
+    :math:`y_u` and :math:`u` for simplicity.
 
     Wikipedia:
         https://wikipedia.org/wiki/Linear_multistep_method
@@ -542,8 +558,7 @@ class zABSampler(Sampler):
 class vABSampler(zABSampler):
     r"""Creates an Adams-Bashforth (AB) multi-step sampler with velocity (:math:`v`) prediction.
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1 - t` and
-    :math:`\sigma_t = t` such that
+    Let's assume :math:`\alpha_t = 1 - t` and :math:`\sigma_t = t` such that
 
     .. math:: \frac{d x_t}{dt}
         & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
@@ -558,6 +573,11 @@ class vABSampler(zABSampler):
     .. math:: x_s \gets x_t + \sum_{i=1}^{n} v(x_{t_i}) \int_t^s \ell_i(u) \, du
 
     where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u)` form their Lagrange basis.
+
+    For an arbitrary schedule, this canonical form is obtained with the rescaled state
+    :math:`y_u = x_t / (\alpha_t + \sigma_t)` and the time reparametrization :math:`u =
+    \sigma_t / (\alpha_t + \sigma_t)`. For simplicity, the derivation above reuses
+    :math:`x` and :math:`t` in place of :math:`y` and :math:`u`.
 
     See also:
         :class:`zABSampler`
@@ -607,8 +627,7 @@ class zEABSampler(Sampler):
         This sampler is a multi-step generalization of the DPM-Solver sampler from Lu et
         al. (2022).
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
-    e^t` such that
+    Let's assume :math:`\alpha_t = 1` and :math:`\sigma_t = e^t` such that
 
     .. math:: \frac{d x_t}{dt}
         & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
@@ -623,14 +642,19 @@ class zEABSampler(Sampler):
     .. math:: x_s \gets x_t + \sum_{i=1}^{n} z(x_{t_i}) \int_t^s e^u \, \ell_i(u) \, du
 
     where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
-    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    \sum_{k=0}^{n-1} a_{ik} \, u^k` form their Lagrange basis. The coefficients
     :math:`a_{ik}` are determined by solving the system of linear equations
     :math:`\ell_i(t_j) = \delta_{ij}`. Then, the exponential Adams-Bashforth
     coefficients are
 
     .. math:: \int_t^s e^u \, \ell_i(u) \, du
-        & = \sum_{k=1}^{n} a_{ik} \int_t^s e^u \, u^k \, du \\
-        & = \sum_{k=1}^{n} a_{ik} \left[ (-1)^k \, k! \, e^u \sum_{j=0}^k \frac{(-u)^j}{j!} \right]_t^s
+        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s e^u \, u^k \, du \\
+        & = \sum_{k=0}^{n-1} a_{ik} \left[ (-1)^k \, k! \, e^u \sum_{j=0}^k \frac{(-u)^j}{j!} \right]_t^s
+
+    For an arbitrary schedule, this canonical form is obtained with the rescaled state
+    :math:`y_u = x_t / \alpha_t` and the time reparametrization :math:`u = \log(\sigma_t
+    / \alpha_t)`. The derivation above reuses :math:`x_t` and :math:`t` in place of
+    :math:`y_u` and :math:`u` for simplicity.
 
     References:
         | DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps (Lu et al., 2022)
@@ -722,8 +746,7 @@ class xEABSampler(Sampler):
     Note:
         This sampler is a multi-step generalization of the DPM-Solver++ sampler from Lu et al. (2022).
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
-    e^t` such that
+    Let's assume :math:`\alpha_t = 1` and :math:`\sigma_t = e^t` such that
 
     .. math:: \frac{d x_t}{dt}
         & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
@@ -739,14 +762,19 @@ class xEABSampler(Sampler):
         - e^s \sum_{i=1}^{n} x(x_{t_i}) \int_t^s e^{-u} \, \ell_i(u) \, du
 
     where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
-    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    \sum_{k=0}^{n-1} a_{ik} \, u^k` form their Lagrange basis. The coefficients
     :math:`a_{ik}` are determined by solving the system of linear equations
     :math:`\ell_i(t_j) = \delta_{ij}`. Then, the exponential Adams-Bashforth
     coefficients are
 
     .. math:: \int_t^s e^{-u} \, \ell_i(u) \, du
-        & = \sum_{k=1}^{n} a_{ik} \int_t^s e^{-u} \, u^k \, du \\
-        & = \sum_{k=1}^{n} a_{ik} \left[ -k! \, e^{-u} \sum_{j=0}^k \frac{u^j}{j!} \right]_t^s
+        & = \sum_{k=0}^{n-1} a_{ik} \int_t^s e^{-u} \, u^k \, du \\
+        & = \sum_{k=0}^{n-1} a_{ik} \left[ -k! \, e^{-u} \sum_{j=0}^k \frac{u^j}{j!} \right]_t^s
+
+    For an arbitrary schedule, this canonical form is obtained with the rescaled state
+    :math:`y_u = x_t / \alpha_t` and the time reparametrization :math:`u = \log(\sigma_t
+    / \alpha_t)`. The derivation above reuses :math:`x_t` and :math:`t` in place of
+    :math:`y_u` and :math:`u` for simplicity.
 
     References:
         | DPM-Solver++: Fast Solver for Guided Sampling of Diffusion Probabilistic Models (Lu et al., 2022)
@@ -830,8 +858,7 @@ class REABSampler(Sampler):
     Note:
         This sampler is a multi-step generalization of the DPM-Solver-v3 sampler from Zheng et al. (2023).
 
-    Without loss of generality, let's assume :math:`\alpha_t = 1` and :math:`\sigma_t =
-    e^t` such that
+    Let's assume :math:`\alpha_t = 1` and :math:`\sigma_t = e^t` such that
 
     .. math:: \frac{d x_t}{dt}
         & = \alpha_t' \, \mathbb{E}[X \mid x_t] + \sigma_t' \, \mathbb{E}[Z \mid x_t] \\
@@ -855,15 +882,20 @@ class REABSampler(Sampler):
         + \sqrt{1 + e^{2s}} \sum_{i=1}^{n} f(x_{t_i}) \int_t^s \frac{e^u}{1 + e^{2u}} \ell_i(u) \, du
 
     where :math:`t_i` are previous time steps and the polynomials :math:`\ell_i(u) =
-    \sum_{k=1}^{n} a_{ik} \, u^k` form their Lagrange basis. The coefficients
+    \sum_{k=0}^{n-1} a_{ik} \, u^k` form their Lagrange basis. The coefficients
     :math:`a_{ik}` are determined by solving the system of linear equations
     :math:`\ell_i(t_j) = \delta_{ij}`. Then, the exponential Adams-Bashforth
     coefficients are
 
     .. math:: \int_t^s \frac{e^u}{1 + e^{2u}} \ell_i(u) \, du
-        = \sum_{k=1}^{n} a_{ik} \int_t^s \frac{e^u \, u^k}{1 + e^{2u}} du
+        = \sum_{k=0}^{n-1} a_{ik} \int_t^s \frac{e^u \, u^k}{1 + e^{2u}} du
 
     where the last integral is estimated by numerical integration.
+
+    For an arbitrary schedule, this canonical form is obtained with the rescaled state
+    :math:`y_u = x_t / \alpha_t` and the time reparametrization
+    :math:`u = \log(\sigma_t / \alpha_t)`. For simplicity, the derivation above reuses
+    :math:`x` and :math:`t` in place of :math:`y` and :math:`u`.
 
     References:
         | DPM-Solver-v3: Improved Diffusion ODE Solver with Empirical Model Statistics (Zheng et al., 2023)
@@ -941,7 +973,7 @@ class REABSampler(Sampler):
 
             x_s = (
                 torch.sqrt((alpha_s**2 + sigma_s**2) / (alpha_t**2 + sigma_t**2)) * x_t
-                + torch.sqrt(alpha_s**2 + sigma_t**2) * integral
+                + torch.sqrt(alpha_s**2 + sigma_s**2) * integral
             )
             x_t = x_s
 
