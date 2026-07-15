@@ -367,7 +367,11 @@ class HeunSampler(Sampler):
 class ItoSampler(Sampler):
     r"""Creates an Itô SDE sampler.
 
-    Let's consider the Itô SDE
+    Let the perturbation process be a diffusion SDE
+
+    .. math:: dx_t = f_t \, x_t \, dt + g_t \, dw_t
+
+    associated with a family of semi-linear reverse SDEs
 
     .. math:: dx_t = \left[ f_t \, x_t - \frac{1 + \eta^2}{2 \tau} g_t^2 \, \nabla_{x_t} \log p(x_t) \right] dt + \eta \, g_t \, dw_t
 
@@ -378,37 +382,44 @@ class ItoSampler(Sampler):
         f_t & = \partial_t \log \alpha_t \\
         g_t^2 & = \alpha_t^2 \, \partial_t \frac{\sigma_t^2}{\alpha_t^2} \, .
 
-    The integral form of this semi-linear Itô SDE is
+    Let's assume :math:`\alpha_t = 1` such that the reverse SDE becomes
 
-    .. math:: x_s = \Psi(t, s) \, x_t
-        - \frac{1 + \eta^2}{2 \tau} \int_t^s \Psi(u, s) \, g_u^2 \, \nabla_{x_u} \log p(x_u) \, du
-        + \eta \int_t^s \Psi(u, s) \, g_u \, dw_u
+    .. math:: dx_t = \frac{1 + \eta^2}{2 \tau} \frac{g_t^2}{\sigma_t^2} \big( x_t - \mathbb{E}[X \mid x_t] \big) dt + \eta \, g_t \, dw_t
 
-    where
+    with integral form
 
-    .. math:: \Psi(t, s) = \exp \left( \int_t^s f_u \, du \right) = \frac{\alpha_s}{\alpha_t} \, .
+    .. math:: x_s
+        & = \Psi(t, s) \, x_t
+        + \int_t^s \partial_u \Psi(u, s) \, \mathbb{E}[X \mid x_u] \, du
+        + \eta \int_t^s \Psi(u, s) \, g_u \, dw_u \\
+        & \approx \Psi(t, s) \, x_t
+        + (1 - \Psi(t, s)) \, \mathbb{E}[X \mid x_t]
+        + \eta \int_t^s \Psi(u, s) \, g_u \, dw_u \, ,
 
-    By Tweedie's formula, we have
+    where :math:`\xi = \frac{1 + \eta^2}{\tau}` and
 
-    .. math:: \int_t^s \Psi(u, s) \, g_u^2 \, \nabla_{x_u} \log p(x_u) \, du
-        & = \int_t^s \Psi(u, s) \, g_u^2 \frac{\alpha_u \mathbb{E}[X \mid x_u] - x_u}{\sigma_u^2} du \\
-        & = 2 \alpha_s \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} \frac{\alpha_u \mathbb{E}[X \mid x_u] - x_u}{\sigma_u} du \\
-        & \approx 2 \alpha_s \frac{\alpha_t \mathbb{E}[X \mid x_t] - x_t}{\sigma_t} \int_t^s \partial_u \frac{\sigma_u}{\alpha_u} du \\
-        & \approx 2 \left( \frac{\sigma_s}{\sigma_t} - \frac{\alpha_s}{\alpha_t} \right) (\alpha_t \mathbb{E}[X \mid x_t] - x_t) \, .
+    .. math:: \Psi(t, s)
+        = \exp \left( \int_t^s \frac{\xi}{2} \frac{g_u^2}{\sigma_u^2} \, du \right)
+        = \left( \frac{\sigma_s}{\sigma_t} \right)^\xi \, .
 
     Finally, by Itô isometry, we have
 
-    .. math:: \int_t^s \Psi(u, s) \, g_u \, dw_u
-        & = \int_s^t \Psi(u, s) \, g_u \, dw_u \\
-        & = \varepsilon \, \sqrt{\int_s^t \Psi(u, s)^2 \, g_u^2 \, du} \\
-        & = \varepsilon \, \sqrt{\int_s^t \alpha_s^2 \, \partial_u \frac{\sigma_u^2}{\alpha_u^2} du} \\
-        & = \varepsilon \, \alpha_s \sqrt{\frac{\sigma_t^2}{\alpha_t^2} - \frac{\sigma_s^2}{\alpha_s^2}}
+    .. math:: \int_t^s \Psi(u, s) \, g_u \, dw_u \sim \mathcal{N} \left(0, \int_s^t \Psi(u, s)^2 \, g_u^2 \, du \right)
 
-    where :math:`\varepsilon \sim \mathcal{N}(0, 1)`.
+    where
+
+    .. math:: \int_s^t \Psi(u, s)^2 \, g_u^2 \, du
+        = \sigma_s^{2\xi} \int_s^t \sigma_u^{-2\xi} \partial_u \sigma_u^2 \, du
+        = \sigma_s^2 \frac{1 - \left( \frac{\sigma_s}{\sigma_t} \right)^{2\xi - 2}}{\xi - 1} \, .
+
+    At :math:`\xi = 1`, the fraction is understood as its limit :math:`2 \log(\sigma_t /
+    \sigma_s)`.
 
     Arguments:
         denoiser: A denoiser :math:`q_\phi(X \mid X_t)`.
-        eta: The stochasticity parameter :math:`\eta \geq 0`.
+        eta: The stochasticity parameter :math:`\eta \geq 0`. At unit temperature
+            :math:`\tau = 1`, :math:`\eta = 0` recovers :class:`EulerSampler` and
+            :math:`\eta = 1` recovers :class:`DDPMSampler`.
         temperature: The temperature parameter :math:`\tau > 0`.
         kwargs: Keyword arguments passed to :class:`Sampler`.
     """
@@ -432,13 +443,20 @@ class ItoSampler(Sampler):
 
         q_t = self.denoiser(x_t, t, **kwargs)
 
-        x_s = alpha_s / alpha_t * x_t
-        x_s = x_s + (1 + self.eta**2) / self.temperature * (
-            sigma_s / sigma_t - alpha_s / alpha_t
-        ) * (x_t - alpha_t * q_t.mean)
-        x_s = x_s + self.eta * alpha_s * torch.sqrt(
-            torch.abs((sigma_t / alpha_t) ** 2 - (sigma_s / alpha_s) ** 2)
-        ) * torch.randn_like(x_s)
+        rho = alpha_t / alpha_s * sigma_s / sigma_t
+        log_rho = torch.log(rho)
+
+        power = (1 + self.eta**2) / self.temperature
+        psi = torch.exp(power * log_rho)
+
+        if math.isclose(power, 1.0, abs_tol=1e-6):
+            var = -2 * log_rho
+        else:
+            var = 1 / (1 - power) * torch.expm1(2 * (power - 1) * log_rho)
+
+        x_s = alpha_s / alpha_t * psi * x_t
+        x_s = x_s + alpha_s * (1 - psi) * q_t.mean
+        x_s = x_s + self.eta * sigma_s * torch.sqrt(torch.clip(var, min=0)) * torch.randn_like(x_t)
 
         return x_s
 
