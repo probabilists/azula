@@ -152,7 +152,7 @@ class LayerNorm(torch.nn.Module):
 @promote_dtype
 def layer_norm(x: Tensor, /, dim: int = -1, eps: float = 1e-5) -> Tensor:
     v, m = torch.var_mean(x, dim=dim, keepdim=True)
-    return (x - m) * torch.rsqrt(v + eps)
+    return (x - m) / torch.sqrt(v + eps)
 
 
 class RMSNorm(torch.nn.Module):
@@ -192,7 +192,7 @@ class RMSNorm(torch.nn.Module):
 
 @promote_dtype
 def rms_norm(x: Tensor, /, dim: int = -1, eps: float = 1e-5) -> Tensor:
-    return x * torch.rsqrt(torch.mean(torch.square(x), dim=dim, keepdim=True) + eps)
+    return x / torch.sqrt(torch.mean(torch.square(x), dim=dim, keepdim=True) + eps)
 
 
 def Patchify(patch_shape: Sequence[int], channel_last: bool = False) -> Rearrange:

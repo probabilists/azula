@@ -978,7 +978,7 @@ class REABSampler(Sampler):
             q_t = self.denoiser(x_t, t, **kwargs)
 
             a_t = sigma_t**2 / (alpha_t**2 + sigma_t**2)
-            b_t = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
+            b_t = sigma_t / torch.sqrt(alpha_t**2 + sigma_t**2)
 
             f_t = (1 - a_t) / b_t / alpha_t * x_t - 1 / b_t * q_t.mean
 

@@ -109,7 +109,7 @@ class AblatedDenoiser(Denoiser):
         c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
         c_out = -sigma_t / alpha_t
         c_skip = 1 / alpha_t
-        c_time = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_time = sigma_t / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_time = torch.searchsorted(self.sigmas, c_time.flatten())
         c_var = sigma_t**2 / (alpha_t**2 + sigma_t**2)
 

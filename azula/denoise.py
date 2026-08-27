@@ -214,7 +214,7 @@ class SimpleDenoiser(Denoiser):
         while alpha_t.ndim < x_t.ndim:
             alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
-        c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_in = 1 / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_time = torch.log(sigma_t / alpha_t).reshape_as(t)
 
         dtype = get_module_dtype(self.backbone)
@@ -306,8 +306,8 @@ class KarrasDenoiser(Denoiser):
         while alpha_t.ndim < x_t.ndim:
             alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
-        c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
-        c_out = sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_in = 1 / torch.sqrt(alpha_t**2 + sigma_t**2)
+        c_out = sigma_t / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_skip = alpha_t / (alpha_t**2 + sigma_t**2)
         c_time = torch.log(sigma_t / alpha_t).reshape_as(t)
 

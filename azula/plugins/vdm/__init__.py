@@ -58,8 +58,8 @@ class VelocityDenoiser(Denoiser):
             alpha_t, sigma_t = alpha_t[..., None], sigma_t[..., None]
 
         c_in = torch.rsqrt(alpha_t**2 + sigma_t**2)
-        c_out = -sigma_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
-        c_skip = alpha_t * torch.rsqrt(alpha_t**2 + sigma_t**2)
+        c_out = -sigma_t / torch.sqrt(alpha_t**2 + sigma_t**2)
+        c_skip = alpha_t / torch.sqrt(alpha_t**2 + sigma_t**2)
         c_time = torch.atan2(sigma_t, alpha_t).flatten() / math.pi * 2
 
         dtype = get_module_dtype(self.backbone)
