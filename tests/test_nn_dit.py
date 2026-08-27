@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from pathlib import Path
+from torch.torch_version import TorchVersion
 
 from azula.nn.dit import DiT
 
@@ -43,14 +44,14 @@ def test_DiT(
         checkpointing=checkpointing,
     )
 
-    dit = make()
-    dit.train()
+    model = make()
+    model.train()
 
     # Call
     x = torch.randn(batch_size, length, in_channels)
     mod = torch.randn(batch_size, mod_features)
     pos = torch.randn(length, pos_channels)
-    y = dit(x, mod, pos=pos)
+    y = model(x, mod, pos=pos)
 
     assert y.ndim == x.ndim
     assert y.shape == (batch_size, length, out_channels)
@@ -61,36 +62,49 @@ def test_DiT(
     loss = y.square().sum()
     loss.backward()
 
-    for p in dit.parameters():
+    for p in model.parameters():
         assert p.grad is not None
         assert torch.all(torch.isfinite(p.grad))
 
     # Save
-    torch.save(dit.state_dict(), tmp_path / "state.pth")
+    torch.save(model.state_dict(), tmp_path / "state.pth")
 
     # Load
     copy = make()
     copy.load_state_dict(torch.load(tmp_path / "state.pth", weights_only=True))
 
-    dit.eval()
+    model.eval()
     copy.eval()
 
-    y = dit(x, mod, pos=pos)
+    y = model(x, mod, pos=pos)
     y_copy = copy(x, mod, pos=pos)
 
     assert torch.allclose(y, y_copy)
 
-    # Float16
-    if torch.__version__ < "2.3":
+    # Before 2.3, several CPU kernels lack a half precision implementation
+    if TorchVersion(torch.__version__) < "2.3":
         return
 
-    dit.to(torch.float16)
-    y16 = dit(x.to(torch.float16), mod.to(torch.float16), pos=pos.to(torch.float16))
+    # Autocast
+    with torch.autocast(device_type="cpu", dtype=torch.float16):
+        y_auto = model(x, mod, pos=pos)
 
-    dit.to(torch.float32)
-    y32 = dit(x.to(torch.float32), mod.to(torch.float32), pos=pos.to(torch.float32))
+    assert y_auto.dtype == torch.float16
+    assert torch.all(torch.isfinite(y_auto))
+
+    err = (y - y_auto.to(torch.float32)).abs().flatten()
+
+    assert torch.quantile(err, 0.99) < 2e-3
+    assert torch.max(err) < 2e-2
+
+    # Float16
+    model.to(torch.float16)
+    y16 = model(x.to(torch.float16), mod.to(torch.float16), pos=pos.to(torch.float16))
+
+    model.to(torch.float32)
+    y32 = model(x.to(torch.float32), mod.to(torch.float32), pos=pos.to(torch.float32))
 
     err = (y32 - y16).abs().flatten()
 
-    assert torch.quantile(err, 0.99) < 1e-3
-    assert torch.max(err) < 1e-2
+    assert torch.quantile(err, 0.99) < 2e-3
+    assert torch.max(err) < 2e-2

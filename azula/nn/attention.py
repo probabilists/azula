@@ -58,12 +58,7 @@ class MultiheadSelfAttention(torch.nn.Module):
             self.qk_norm = torch.nn.Identity()
 
         if rope:
-            magnitude = torch.exp(math.log(1e-1) * torch.rand(channels // 2, 1))
-            direction = torch.randn(channels // 2, pos_channels)
-            direction = direction / torch.linalg.norm(direction, dim=-1, keepdim=True)
-
-            self.theta_proj = torch.nn.Linear(pos_channels, channels // 2, bias=False)
-            self.theta_proj.weight.data.copy_(magnitude * direction)
+            self.theta_proj = RoPEProjection(pos_channels, channels // 2)
         else:
             self.theta_proj = None
 
@@ -107,6 +102,46 @@ class MultiheadSelfAttention(torch.nn.Module):
         y = self.y_proj(y)
 
         return y
+
+
+class RoPEProjection(torch.nn.Module):
+    """Learnable RoPE angle projection."""
+
+    def __init__(
+        self,
+        pos_channels: int,
+        out_channels: int,
+        init_magnitude: float = 1e-2,
+        eps: float = 1e-6,
+    ) -> None:
+        super().__init__()
+
+        self.log_magnitude = torch.nn.Parameter(
+            math.log(init_magnitude) * torch.rand(out_channels)
+        )
+
+        self.direction = torch.nn.Parameter(
+            torch.nn.functional.one_hot(
+                torch.arange(out_channels) % pos_channels,
+                num_classes=pos_channels,
+            )
+            + math.sqrt(1 / pos_channels) * torch.randn(out_channels, pos_channels)
+        )
+
+        self.eps = eps
+
+    def forward(self, pos: Tensor) -> Tensor:
+        magnitude = torch.exp(self.log_magnitude)
+        direction = self.direction / torch.sqrt(
+            torch.sum(
+                torch.square(self.direction),
+                dim=-1,
+                keepdim=True,
+            )
+            + self.eps
+        )
+
+        return torch.einsum("j,ji,...i->...j", magnitude, direction, pos)
 
 
 @promote_dtype

@@ -88,20 +88,19 @@ class ViT(DiT):
         Returns:
             The output tensor, with shape :math:`(B, C_o, L_1, ..., L_N)`.
         """
-
         x = self.patch(x)
 
         if cond is not None:
             cond = self.patch(cond)
+            cond = cond.flatten(1, -2)
 
         shape = x.shape[1:-1]
 
         pos = (torch.arange(size, dtype=x.dtype, device=x.device) for size in shape)
         pos = torch.cartesian_prod(*pos)
-        pos = torch.reshape(pos, shape=(-1, len(shape)))
+        pos = torch.reshape(pos, shape=(-1, self.spatial))
 
-        x = x.flatten(1, -2)
-        y = super().forward(x, mod, pos=pos, cond=cond)
+        y = super().forward(x.flatten(1, -2), mod=mod, pos=pos, cond=cond)
         y = y.unflatten(-2, shape)
         y = self.unpatch(y)
 
