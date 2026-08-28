@@ -48,6 +48,7 @@ docs = [
 ]
 test = [
   "pytest>=8.0.0",
+  "pytest-rerunfailures>=14.0.0",
 ]
 
 [project.urls]

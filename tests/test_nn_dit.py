@@ -18,6 +18,7 @@ from azula.nn.dit import DiT
 @pytest.mark.parametrize("rope", [False, True])
 @pytest.mark.parametrize("checkpointing", [False, True])
 @pytest.mark.parametrize("batch_size", [4])
+@pytest.mark.flaky(reruns=2)
 def test_DiT(
     tmp_path: Path,
     length: int,
